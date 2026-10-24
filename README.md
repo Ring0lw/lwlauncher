@@ -12,3 +12,5 @@ cargo build --release
 ```bash
 curl -fsSL https://github.com/Ring0lw/lwlauncher/releases/latest/download/install.sh | bash
 ```
+
+![mrpenis](assets/mrpenis.jpg)
