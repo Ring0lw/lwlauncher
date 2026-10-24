@@ -109,6 +109,21 @@ pub fn head(url: &str) -> Result<(u64, String), String> {
     Ok((len, if etag.is_empty() { modified } else { etag }))
 }
 
+pub fn latest_tag(releases: &str) -> Result<String, String> {
+    let out = Command::new("curl")
+        .args(["-fsSI", "--connect-timeout", "10", "--max-time", "20", &format!("{releases}/latest")])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("curl: {e}"))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let loc = text
+        .lines()
+        .find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("location")).map(|(_, v)| v.trim().to_string()))
+        .ok_or("no release")?;
+    let tag = loc.rsplit("/tag/").next().filter(|t| !t.is_empty() && *t != loc).ok_or("no release")?;
+    Ok(tag.to_string())
+}
+
 pub fn download(url: &str, dest: &Path, got: &AtomicU64) -> Result<(), String> {
     let mut child = curl()
         .args(["--max-time", "600", "-o"])

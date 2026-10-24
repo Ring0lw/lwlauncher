@@ -39,6 +39,10 @@ pub fn plan(paths: &Paths) -> Result<Plan, String> {
     if std::fs::read_to_string(&desktop).map(|s| s.contains("lwlauncher")).unwrap_or(false) {
         extra.push(desktop);
     }
+    let lw = paths.home.join(".local/bin/lw");
+    if std::fs::read_link(&lw).map(|t| t.starts_with(&dir) || t.starts_with(&paths.install)).unwrap_or(false) {
+        extra.push(lw);
+    }
     let icon = paths.icon_file();
     if icon.exists() {
         extra.push(icon);

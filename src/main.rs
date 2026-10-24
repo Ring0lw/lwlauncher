@@ -287,7 +287,7 @@ fn text_menu(paths: &Paths) -> i32 {
 
 fn usage() {
     println!(
-        "LinusWare launcher v{VERSION}\n\n  lwlauncher              open the launcher\n  lwlauncher external     update, then start LinusWare in this terminal\n  lwlauncher --update     update LinusWare and the launcher\n  lwlauncher --install    install LinusWare\n  lwlauncher --uninstall  delete LinusWare\n\nLINUSWARE_DIR sets the install folder (default ~/.local/share/linusware)."
+        "LinusWare launcher v{VERSION}\n\n  lw              open the launcher\n  lw external     update, then start LinusWare in this terminal\n  lw --update     update LinusWare and the launcher\n  lw --install    install LinusWare\n  lw --uninstall  delete LinusWare\n\nLINUSWARE_DIR sets the install folder (default ~/.local/share/linusware)."
     );
 }
 
@@ -333,6 +333,9 @@ fn main() {
         std::process::exit(askpass::client_main(if first.is_empty() { "Password: " } else { first }));
     }
     migrate(&paths);
+    if paths.exe_installed() {
+        let _ = install::write_desktop_entry(&paths);
+    }
     let code = match args.first().map(String::as_str) {
         Some("--askpass") => askpass::client_main(args.get(1).map(String::as_str).unwrap_or("Password: ")),
         Some("--update") => (!cli_update(&paths)) as i32,
