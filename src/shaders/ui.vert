@@ -1,0 +1,39 @@
+layout(location = 0) in vec4 a_rect;
+layout(location = 1) in vec4 a_uv;
+layout(location = 2) in vec4 a_fill;
+layout(location = 3) in vec4 a_border;
+layout(location = 4) in vec4 a_glow;
+layout(location = 5) in vec4 a_extra;
+layout(location = 6) in vec4 a_p0;
+layout(location = 7) in vec4 a_p1;
+layout(location = 8) in vec4 a_p2;
+uniform vec2 u_res;
+out vec2 v_local;
+out vec2 v_uv;
+flat out vec2 v_half;
+flat out vec4 v_fill;
+flat out vec4 v_border;
+flat out vec4 v_glow;
+flat out vec4 v_extra;
+flat out vec4 v_p0;
+flat out vec4 v_p1;
+flat out vec4 v_p2;
+
+void main() {
+    vec2 c = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    int kind = int(a_p0.w + 0.5);
+    float pad = (kind == 0 || kind == 4) ? a_p0.z + 1.5 : 0.0;
+    vec2 pos = a_rect.xy - pad + c * (a_rect.zw + 2.0 * pad);
+    v_half = a_rect.zw * 0.5;
+    v_local = pos - (a_rect.xy + v_half);
+    v_uv = mix(a_uv.xy, a_uv.zw, (pos - a_rect.xy) / max(a_rect.zw, vec2(0.001)));
+    v_fill = a_fill;
+    v_border = a_border;
+    v_glow = a_glow;
+    v_extra = a_extra;
+    v_p0 = a_p0;
+    v_p1 = a_p1;
+    v_p2 = a_p2;
+    vec2 ndc = pos / u_res * 2.0 - 1.0;
+    gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
+}
