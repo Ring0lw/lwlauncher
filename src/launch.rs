@@ -1,6 +1,7 @@
 use crate::Paths;
 use crate::askpass::Bridge;
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -67,16 +68,85 @@ pub fn tail(p: &Path) -> String {
     s.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").chars().take(160).collect()
 }
 
-fn sudo(paths: &Paths, bridge: &Bridge, dir: &Path, args: &[&str], log: &Path) -> std::io::Result<Child> {
+unsafe extern "C" {
+    fn getuid() -> u32;
+    fn getgid() -> u32;
+}
+
+const KEEP_ENV: [&str; 14] = [
+    "HOME", "USER", "LOGNAME", "PATH", "LANG", "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR",
+    "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "DBUS_SESSION_BUS_ADDRESS",
+];
+
+fn which(bin: &str) -> Option<PathBuf> {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+        .map(|d| d.join(bin))
+        .find(|p| crate::is_exec(p))
+}
+
+fn pkexec_bin() -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    if let Some(p) = std::env::var_os("LW_PKEXEC") {
+        return (!p.is_empty()).then(|| PathBuf::from(p));
+    }
+    which("pkexec")
+}
+
+#[derive(Clone)]
+struct Ask {
+    exe: PathBuf,
+    sock: PathBuf,
+    token: String,
+}
+
+impl Ask {
+    fn new(paths: &Paths, bridge: &Bridge) -> Ask {
+        Ask { exe: paths.exe.clone(), sock: bridge.path.clone(), token: bridge.token.clone() }
+    }
+}
+
+// ELEVATE
+fn elevate(pkexec: Option<&Path>, ask: &Ask, dir: &Path, cmd: &[OsString], log: &Path) -> std::io::Result<Child> {
     let out = std::fs::File::create(log)?;
     let err = out.try_clone()?;
-    #[cfg(debug_assertions)]
-    let bin = std::env::var("LW_SUDO").unwrap_or_else(|_| "sudo".into());
-    #[cfg(not(debug_assertions))]
-    let bin = "sudo";
-    let mut c = Command::new(bin);
-    c.arg("-A").args(args).current_dir(dir);
-    c.env("SUDO_ASKPASS", &paths.exe).env("LW_ASKPASS", &bridge.path).env("LW_ASKPASS_TOKEN", &bridge.token);
+    let mut c = match pkexec {
+        Some(pk) => {
+            let mut c = Command::new(pk);
+            c.arg("--disable-internal-agent").arg(which("env").unwrap_or_else(|| PathBuf::from("/usr/bin/env")));
+            let vars = KEEP_ENV.iter().map(|k| (OsString::from(k), std::env::var_os(k))).chain(
+                std::env::vars_os().filter(|(k, _)| k.to_str().is_some_and(|k| k.starts_with("LW_") && !k.starts_with("LW_ASKPASS"))).map(|(k, v)| (k, Some(v))),
+            );
+            for (k, v) in vars {
+                if let Some(v) = v {
+                    let mut kv = k;
+                    kv.push("=");
+                    kv.push(v);
+                    c.arg(kv);
+                }
+            }
+            let (uid, gid) = unsafe { (getuid(), getgid()) };
+            c.arg(format!("SUDO_UID={uid}")).arg(format!("SUDO_GID={gid}"));
+            if let Some(u) = std::env::var_os("USER") {
+                let mut kv = OsString::from("SUDO_USER=");
+                kv.push(u);
+                c.arg(kv);
+            }
+            c
+        }
+        None => {
+            #[cfg(debug_assertions)]
+            let bin = std::env::var("LW_SUDO").unwrap_or_else(|_| "sudo".into());
+            #[cfg(not(debug_assertions))]
+            let bin = "sudo";
+            let mut c = Command::new(bin);
+            c.args(["-A", "-E"]);
+            c.env("SUDO_ASKPASS", &ask.exe).env("LW_ASKPASS", &ask.sock).env("LW_ASKPASS_TOKEN", &ask.token);
+            c
+        }
+    };
+    c.args(cmd).current_dir(dir);
     c.stdin(Stdio::null()).stdout(out).stderr(err);
     unsafe {
         c.pre_exec(|| {
@@ -87,19 +157,48 @@ fn sudo(paths: &Paths, bridge: &Bridge, dir: &Path, args: &[&str], log: &Path) -
     c.spawn()
 }
 
+fn no_agent(code: i32, tail: &str) -> bool {
+    let t = tail.to_ascii_lowercase();
+    code == 127 && (t.contains("authentication agent") || t.contains("no session for cookie"))
+}
+
+pub const CANCELLED: i32 = 126;
+
 // EXTERNAL
 pub fn start(paths: &Paths, bridge: &Bridge, mut send: impl FnMut(Event) + Send + 'static) -> std::io::Result<()> {
     let log = log_path(paths);
-    let mut child = sudo(paths, bridge, &paths.edition(), &["-E", "./run.sh"], &log)?;
+    let dir = paths.edition();
+    let cmd = [dir.join("run.sh").into_os_string()];
+    let ask = Ask::new(paths, bridge);
+    let mut pk = pkexec_bin();
+    let mut child = elevate(pk.as_deref(), &ask, &dir, &cmd, &log)?;
     let paths = paths.clone();
     std::thread::spawn(move || {
-        let started = Instant::now();
+        let mut started = Instant::now();
         let mut seen: Option<Instant> = None;
         loop {
             if let Ok(Some(st)) = child.try_wait() {
                 let code = st.code().unwrap_or(-1);
                 let t = tail(&log);
-                if seen.is_none() && code != 0 && unsupported(&t) && started.elapsed() < Duration::from_secs(3) {
+                if pk.is_some() && seen.is_none() && no_agent(code, &t) {
+                    pk = None;
+                    match elevate(None, &ask, &dir, &cmd, &log) {
+                        Ok(c) => {
+                            child = c;
+                            started = Instant::now();
+                            continue;
+                        }
+                        Err(e) => {
+                            send(Event::Exited { code, tail: e.to_string() });
+                            return;
+                        }
+                    }
+                }
+                if pk.is_some() && seen.is_none() && code == CANCELLED {
+                    send(Event::Exited { code, tail: String::new() });
+                    return;
+                }
+                if pk.is_none() && seen.is_none() && code != 0 && unsupported(&t) && started.elapsed() < Duration::from_secs(3) {
                     match in_terminal(&paths) {
                         Ok(()) => send(Event::Stable),
                         Err(_) => send(Event::Exited { code, tail: t }),
@@ -168,15 +267,19 @@ fn in_terminal(paths: &Paths) -> std::io::Result<()> {
 // ELEVATED DELETE
 pub fn sudo_rm(paths: &Paths, bridge: &Bridge, targets: &[PathBuf], mut done: impl FnMut(bool, String) + Send + 'static) -> std::io::Result<()> {
     let log = std::env::temp_dir().join(format!("lwlauncher-rm-{}.log", std::process::id()));
-    let mut args: Vec<String> = vec!["rm".into(), "-rf".into(), "--".into()];
-    args.extend(targets.iter().map(|p| p.display().to_string()));
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let mut child = sudo(paths, bridge, Path::new("/"), &refs, &log)?;
+    let mut cmd: Vec<OsString> = vec![which("rm").unwrap_or_else(|| PathBuf::from("/usr/bin/rm")).into_os_string(), "-rf".into(), "--".into()];
+    cmd.extend(targets.iter().map(|p| p.clone().into_os_string()));
+    let ask = Ask::new(paths, bridge);
+    let pk = pkexec_bin();
+    let mut child = elevate(pk.as_deref(), &ask, Path::new("/"), &cmd, &log)?;
     std::thread::spawn(move || {
-        let ok = child.wait().map(|s| s.success()).unwrap_or(false);
-        let t = tail(&log);
+        let mut st = child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+        if pk.is_some() && no_agent(st, &tail(&log)) {
+            st = elevate(None, &ask, Path::new("/"), &cmd, &log).and_then(|mut c| c.wait()).map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+        }
+        let t = if st == CANCELLED { String::new() } else { tail(&log) };
         let _ = std::fs::remove_file(&log);
-        done(ok, t);
+        done(st == 0, t);
     });
     Ok(())
 }
