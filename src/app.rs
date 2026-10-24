@@ -663,6 +663,10 @@ impl App {
                     self.ask = None;
                     if code == 0 {
                         self.note("LinusWare closed", MUTED);
+                    } else if code == launch::CANCELLED && tail.is_empty() {
+                        self.note("Cancelled", WARN);
+                    } else if tail.contains("Not authorized") {
+                        self.note("Wrong password", WARN);
                     } else if self.ask_tries > 0 && (tail.contains("no password") || tail.contains("incorrect password") || tail.is_empty()) {
                         self.note(if tail.contains("incorrect") { "Wrong password" } else { "Cancelled" }, WARN);
                     } else {
