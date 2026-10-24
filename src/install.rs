@@ -47,23 +47,24 @@ pub fn status(paths: &Paths, what: &str) -> Result<Status, String> {
     Status::parse(&text).ok_or_else(|| "bad status.json".into())
 }
 
-fn md5sum(paths: &Paths, what: &str) -> Result<String, String> {
-    let text = net::fetch(&paths.url(&format!("{what}/bin/MD5SUM")))?;
-    let hex: String = text.chars().filter(|c| c.is_ascii_hexdigit()).collect::<String>().to_ascii_lowercase();
-    if hex.len() != 32 {
+pub const RELEASES: &str = "https://github.com/Ring0lw/lwlauncher/releases";
+
+fn md5sum(url: &str) -> Result<String, String> {
+    let text = net::fetch(url)?;
+    let hex: String = text.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+    if hex.len() != 32 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("bad MD5SUM".into());
     }
     Ok(hex)
 }
 
-fn fetch_verified(paths: &Paths, rel: &str, what: &str, dest: &Path, pr: &Progress) -> Result<(), String> {
-    let expected = md5sum(paths, what)?;
-    let url = paths.url(rel);
-    let total = net::head(&url).map(|(n, _)| n).unwrap_or(0);
+fn fetch_verified(url: &str, md5_url: &str, dest: &Path, pr: &Progress) -> Result<(), String> {
+    let expected = md5sum(md5_url)?;
+    let total = net::head(url).map(|(n, _)| n).unwrap_or(0);
     pr.total.store(total, Ordering::Relaxed);
     pr.got.store(0, Ordering::Relaxed);
     pr.set(PH_DOWNLOAD);
-    net::download(&url, dest, &pr.got)?;
+    net::download(url, dest, &pr.got)?;
     pr.set(PH_VERIFY);
     let actual = net::md5_file(dest).map_err(|e| e.to_string())?;
     if actual != expected {
@@ -87,7 +88,7 @@ pub fn update_edition(paths: &Paths, pr: &Progress, force: bool) -> Result<Outco
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let archive = dir.join(".download.tmp");
     let result = (|| {
-        fetch_verified(paths, &format!("{EDITION}/bin/linusware.tar.gz"), EDITION, &archive, pr)?;
+        fetch_verified(&paths.url(&format!("{EDITION}/bin/linusware.tar.gz")), &paths.url(&format!("{EDITION}/bin/MD5SUM")), &archive, pr)?;
         pr.set(PH_INSTALL);
         unpack(&archive, &dir)?;
         write_atomic(&dir.join("version.txt"), format!("{}\n", st.version).as_bytes()).map_err(|e| e.to_string())
@@ -144,15 +145,14 @@ pub fn self_update(paths: &Paths, pr: &Progress) -> Result<Option<String>, Strin
     if !paths.exe_installed() {
         return Ok(None);
     }
-    let st = match status(paths, "launcher") {
-        Ok(s) => s,
-        Err(_) => return Ok(None),
-    };
-    if !st.updated || !net::newer(&st.version, crate::VERSION) {
+    let Ok(tag) = net::latest_tag(RELEASES) else { return Ok(None) };
+    let version = tag.trim_start_matches('v').to_string();
+    if !net::newer(&version, crate::VERSION) {
         return Ok(None);
     }
     let tmp = paths.install.join(".lwlauncher.new");
-    let r = fetch_verified(paths, "launcher/bin/lwlauncher", "launcher", &tmp, pr).and_then(|_| {
+    let base = format!("{RELEASES}/download/{tag}");
+    let r = fetch_verified(&format!("{base}/lwlauncher"), &format!("{base}/lwlauncher.md5"), &tmp, pr).and_then(|_| {
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &paths.exe).map_err(|e| e.to_string())
     });
@@ -160,7 +160,7 @@ pub fn self_update(paths: &Paths, pr: &Progress) -> Result<Option<String>, Strin
     if r.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
-    r.map(|_| Some(st.version))
+    r.map(|_| Some(version))
 }
 
 pub fn restart(paths: &Paths) -> ! {
