@@ -16,6 +16,3 @@ cp install.sh dist/install.sh
 cp install.sh scripts/launcher.sh scripts/update.sh dist/catapis/
 
 echo "dist: ok v$ver ($(du -h dist/lwlauncher | cut -f1), glibc $(objdump -T dist/lwlauncher | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1))"
-if [ "$1" = "--release" ]; then
-  gh release create "v$ver" dist/lwlauncher dist/lwlauncher.md5 dist/install.sh --title "v$ver" --notes "${2:-LinusWare launcher v$ver}"
-fi

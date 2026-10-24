@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  TARGET: x86_64-unknown-linux-gnu
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo zigbuild --release --locked --target "$TARGET.2.17"
+
+      - name: Package
+        run: |
+          mkdir -p out
+          cp "target/$TARGET/release/lwlauncher" out/lwlauncher
+          md5sum out/lwlauncher | cut -d' ' -f1 > out/lwlauncher.md5
+          cp install.sh out/install.sh
+          echo "glibc floor: $(objdump -T out/lwlauncher | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1)"
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lwlauncher
+          path: out/
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          [ "v$ver" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $ver"; exit 1; }
+          cat > notes.md <<EOF
+          Install:
+          \`\`\`sh
+          curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/install.sh | bash
+          \`\`\`
+          Then run \`lw\`. The launcher downloads LinusWare and updates itself from these releases.
+          EOF
+          gh release create "$GITHUB_REF_NAME" out/lwlauncher out/lwlauncher.md5 out/install.sh --title "$GITHUB_REF_NAME" --notes-file notes.md
