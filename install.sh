@@ -39,8 +39,10 @@ export LINUSWARE_DIR="$INSTALL_DIR"
 info "Downloading the launcher..."
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
-want=$(curl -fsSL "${REPO}/releases/latest/download/lwlauncher.md5" | cut -c1-32) || error "Could not fetch lwlauncher.md5"
-curl -fSL --progress-bar -o "$tmp" "${REPO}/releases/latest/download/lwlauncher" || error "Could not download the launcher"
+tag=$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/Ring0lw/lwlauncher/releases/latest" 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1) || true
+if [ -n "$tag" ]; then url="${REPO}/releases/download/${tag}"; else url="${REPO}/releases/latest/download"; fi
+want=$(curl -fsSL "${url}/lwlauncher.md5" | cut -c1-32) || error "Could not fetch lwlauncher.md5"
+curl -fSL --progress-bar -o "$tmp" "${url}/lwlauncher" || error "Could not download the launcher"
 [ "$(md5sum "$tmp" | cut -d' ' -f1)" = "$want" ] || error "MD5 mismatch for the launcher"
 chmod +x "$tmp"
 mv "$tmp" "${INSTALL_DIR}/lwlauncher"

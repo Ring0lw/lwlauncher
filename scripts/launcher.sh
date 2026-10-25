@@ -7,8 +7,10 @@ BIN="${INSTALL_DIR}/lwlauncher"
 if [ ! -x "$BIN" ]; then
   mkdir -p "$INSTALL_DIR"
   tmp="$(mktemp)"
-  want=$(curl -fsSL "${REPO}/releases/latest/download/lwlauncher.md5" | cut -c1-32)
-  if curl -fsSL -o "$tmp" "${REPO}/releases/latest/download/lwlauncher" && [ "$(md5sum "$tmp" | cut -d' ' -f1)" = "$want" ]; then
+  tag=$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/Ring0lw/lwlauncher/releases/latest" 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+  if [ -n "$tag" ]; then url="${REPO}/releases/download/${tag}"; else url="${REPO}/releases/latest/download"; fi
+  want=$(curl -fsSL "${url}/lwlauncher.md5" | cut -c1-32)
+  if curl -fsSL -o "$tmp" "${url}/lwlauncher" && [ "$(md5sum "$tmp" | cut -d' ' -f1)" = "$want" ]; then
     chmod +x "$tmp" && mv "$tmp" "$BIN"
     mkdir -p "${HOME}/.local/bin" && ln -sfn "$BIN" "${HOME}/.local/bin/lw"
   else

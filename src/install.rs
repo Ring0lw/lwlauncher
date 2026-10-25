@@ -48,6 +48,7 @@ pub fn status(paths: &Paths, what: &str) -> Result<Status, String> {
 }
 
 pub const RELEASES: &str = "https://github.com/Ring0lw/lwlauncher/releases";
+pub const LATEST_API: &str = "https://api.github.com/repos/Ring0lw/lwlauncher/releases/latest";
 
 fn md5sum(url: &str) -> Result<String, String> {
     let text = net::fetch(url)?;
@@ -145,7 +146,7 @@ pub fn self_update(paths: &Paths, pr: &Progress) -> Result<Option<String>, Strin
     if !paths.exe_installed() {
         return Ok(None);
     }
-    let Ok(tag) = net::latest_tag(RELEASES) else { return Ok(None) };
+    let Ok(tag) = net::latest_tag(LATEST_API, RELEASES) else { return Ok(None) };
     let version = tag.trim_start_matches('v').to_string();
     if !net::newer(&version, crate::VERSION) {
         return Ok(None);
