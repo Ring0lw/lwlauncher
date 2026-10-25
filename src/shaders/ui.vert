@@ -7,9 +7,12 @@ layout(location = 5) in vec4 a_extra;
 layout(location = 6) in vec4 a_p0;
 layout(location = 7) in vec4 a_p1;
 layout(location = 8) in vec4 a_p2;
+layout(location = 9) in vec4 a_clip;
 uniform vec2 u_res;
 out vec2 v_local;
 out vec2 v_uv;
+out vec2 v_px;
+flat out vec4 v_clip;
 flat out vec2 v_half;
 flat out vec4 v_fill;
 flat out vec4 v_border;
@@ -34,6 +37,8 @@ void main() {
     v_p0 = a_p0;
     v_p1 = a_p1;
     v_p2 = a_p2;
+    v_px = pos;
+    v_clip = a_clip;
     vec2 ndc = pos / u_res * 2.0 - 1.0;
     gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
 }

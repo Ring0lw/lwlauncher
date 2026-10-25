@@ -44,11 +44,12 @@ pub struct Inst {
     p0: [f32; 4],
     p1: [f32; 4],
     p2: [f32; 4],
+    clip: [f32; 4],
 }
 
 impl Default for Inst {
     fn default() -> Inst {
-        Inst { rect: [0.0; 4], uv: [0.0; 4], fill: [0.0; 4], border: [0.0; 4], glow: [0.0; 4], extra: [0.0; 4], p0: [0.0; 4], p1: [-2.0, 0.0, 0.0, 0.0], p2: [0.0; 4] }
+        Inst { rect: [0.0; 4], uv: [0.0; 4], fill: [0.0; 4], border: [0.0; 4], glow: [0.0; 4], extra: [0.0; 4], p0: [0.0; 4], p1: [-2.0, 0.0, 0.0, 0.0], p2: [0.0; 4], clip: [-1e9, -1e9, 1e9, 1e9] }
     }
 }
 
@@ -350,6 +351,7 @@ pub struct Gfx {
     pub text: Text,
     pub insts: Vec<Inst>,
     pub oy: f32,
+    pub clip: Option<[f32; 4]>,
     pub res: (f32, f32),
 }
 
@@ -398,7 +400,7 @@ impl Gfx {
             gl.bind_vertex_array(Some(vao));
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
             let stride = std::mem::size_of::<Inst>() as i32;
-            for i in 0..9u32 {
+            for i in 0..10u32 {
                 gl.enable_vertex_attrib_array(i);
                 gl.vertex_attrib_pointer_f32(i, 4, glow::FLOAT, false, stride, (i * 16) as i32);
                 gl.vertex_attrib_divisor(i, 1);
@@ -416,7 +418,7 @@ impl Gfx {
             for (name, unit) in [("u_atlas", 0), ("u_image", 1), ("u_fx", 2)] {
                 gl.uniform_1_i32(gl.get_uniform_location(ui, name).as_ref(), unit);
             }
-            Ok(Gfx { gl, bg, ui, vao, vbo, atlas, logo, fx, fx_size: (1, 1), text: Text::new(scale), insts: Vec::with_capacity(256), res: (1.0, 1.0), oy: 0.0 })
+            Ok(Gfx { gl, bg, ui, vao, vbo, atlas, logo, fx, fx_size: (1, 1), text: Text::new(scale), insts: Vec::with_capacity(256), res: (1.0, 1.0), oy: 0.0, clip: None })
         }
     }
 
@@ -432,6 +434,14 @@ impl Gfx {
             self.gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::R8 as i32, m.w as i32, m.h as i32, 0, glow::RED, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&m.data)));
         }
         self.fx_size = (m.w, m.h);
+    }
+
+    fn push(&mut self, mut i: Inst) {
+        if let Some([x, y, w, h]) = self.clip {
+            let s = self.text.scale;
+            i.clip = [x * s, (y + self.oy) * s, (x + w) * s, (y + h + self.oy) * s];
+        }
+        self.insts.push(i);
     }
 
     fn s(&self) -> f32 {
@@ -466,7 +476,7 @@ impl Gfx {
         if let Some((rx, ry, rr, ra)) = st.ripple {
             i.p2 = [rx * s, ry * s, rr * s, ra];
         }
-        self.insts.push(i);
+        self.push(i);
     }
 
     pub fn fill(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, c: Rgba) {
@@ -480,7 +490,7 @@ impl Gfx {
         i.fill = c.pm();
         i.p0 = [0.0, thick * s, 0.0, 4.0];
         i.p1 = [rot, 4.4, 0.0, 0.0];
-        self.insts.push(i);
+        self.push(i);
     }
 
     pub fn image(&mut self, x: f32, y: f32, w: f32, h: f32, alpha: f32) {
@@ -489,7 +499,7 @@ impl Gfx {
         let mut i = Inst { rect: [x * s, y * s, w * s, h * s], uv: [0.0, 0.0, 1.0, 1.0], ..Default::default() };
         i.fill = [alpha, alpha, alpha, alpha];
         i.p0[3] = 2.0;
-        self.insts.push(i);
+        self.push(i);
     }
 
     pub fn fx(&mut self, x: f32, y: f32, uv: [f32; 4], c: Rgba) {
@@ -500,7 +510,7 @@ impl Gfx {
         let mut i = Inst { rect: [(x * s).round(), (y * s).round(), w, h], uv, ..Default::default() };
         i.fill = c.pm();
         i.p0[3] = 3.0;
-        self.insts.push(i);
+        self.push(i);
     }
 
     pub fn text(&mut self, f: Font, size: f32, s: &str, x: f32, base: f32, align: Align, c: Rgba) -> f32 {
@@ -530,7 +540,7 @@ impl Gfx {
                 let mut i = Inst { rect: [pen.floor() + g.off[0], by + g.off[1], g.size[0], g.size[1]], uv: g.uv, ..Default::default() };
                 i.fill = fill;
                 i.p0[3] = 1.0;
-                self.insts.push(i);
+                self.push(i);
             }
             pen += sf.h_advance(id);
             prev = Some(id);

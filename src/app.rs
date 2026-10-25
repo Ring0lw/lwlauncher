@@ -107,6 +107,7 @@ enum Panel {
     Main,
     Settings,
     Help,
+    Changelog,
 }
 
 #[derive(PartialEq)]
@@ -166,6 +167,9 @@ struct App {
     hits: Vec<Hit>,
     anims: HashMap<Id, Anim>,
     knobs: HashMap<Id, f32>,
+    log_scroll: f32,
+    log_target: f32,
+    log_max: f32,
     pressed: Option<Id>,
     panel: Panel,
     panel_t: f32,
@@ -234,6 +238,9 @@ pub fn run(paths: Paths, mode: Mode) -> Result<i32, String> {
         hits: Vec::new(),
         anims: HashMap::new(),
         knobs: HashMap::new(),
+        log_scroll: 0.0,
+        log_target: 0.0,
+        log_max: 0.0,
         pressed: None,
         panel: Panel::Main,
         panel_t: 1.0,
@@ -541,7 +548,7 @@ impl App {
     fn click(&mut self, id: Id) {
         match id {
             Id::Gear => self.set_panel(if self.panel == Panel::Settings { Panel::Main } else { Panel::Settings }),
-            Id::Help => self.set_panel(if self.panel == Panel::Help { Panel::Main } else { Panel::Help }),
+            Id::Help => self.set_panel(if matches!(self.panel, Panel::Help | Panel::Changelog) { Panel::Main } else { Panel::Help }),
             Id::External => self.start_launch(),
             Id::Update => self.start_update(),
             Id::TogAuto => {
@@ -555,7 +562,11 @@ impl App {
             Id::OpenFolder => launch::open(&self.paths.install.display().to_string()),
             Id::Discord => launch::open(DISCORD),
             Id::Backup => launch::open(DISCORD_BACKUP),
-            Id::Changelog => self.set_panel(Panel::Help),
+            Id::Changelog => {
+                self.log_scroll = 0.0;
+                self.log_target = 0.0;
+                self.set_panel(Panel::Changelog);
+            }
             Id::OpenLog => launch::open(&launch::log_path(&self.paths).display().to_string()),
             Id::PwOk => self.submit_password(),
             Id::PwCancel => self.cancel_password(),
