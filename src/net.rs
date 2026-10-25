@@ -109,7 +109,15 @@ pub fn head(url: &str) -> Result<(u64, String), String> {
     Ok((len, if etag.is_empty() { modified } else { etag }))
 }
 
-pub fn latest_tag(releases: &str) -> Result<String, String> {
+pub fn latest_tag(api: &str, releases: &str) -> Result<String, String> {
+    let out = Command::new("curl")
+        .args(["-fsSL", "--connect-timeout", "10", "--max-time", "20", "-H", "Accept: application/vnd.github+json", api])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("curl: {e}"))?;
+    if let Some(tag) = json_str(&String::from_utf8_lossy(&out.stdout), "tag_name").filter(|t| out.status.success() && !t.is_empty()) {
+        return Ok(tag);
+    }
     let out = Command::new("curl")
         .args(["-fsSI", "--connect-timeout", "10", "--max-time", "20", &format!("{releases}/latest")])
         .stdin(Stdio::null())

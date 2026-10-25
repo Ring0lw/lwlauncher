@@ -76,7 +76,8 @@ pub enum Mode {
 
 pub enum Msg {
     Checked(Result<Status, String>),
-    Updated(Result<(Outcome, Option<String>), String>),
+    Updated(Result<Outcome, String>, Option<String>),
+    SelfUpdated,
     Ask(Request),
     Launch(launch::Event),
     Deleted(Result<remove::Report, String>),
@@ -388,15 +389,17 @@ impl App {
             self.note("curl is missing, install it to download LinusWare", ERR);
             return;
         }
-        let auto = self.cfg.auto_update && self.installed();
-        if auto {
+        if self.cfg.auto_update && self.installed() {
             self.start_update();
             return;
         }
         self.job = Job::Checking;
-        let (paths, proxy) = (self.paths.clone(), self.proxy.clone());
+        let (paths, proxy, pr, auto) = (self.paths.clone(), self.proxy.clone(), self.progress.clone(), self.cfg.auto_update);
         std::thread::spawn(move || {
             let _ = proxy.send_event(Msg::Checked(install::status(&paths, crate::EDITION)));
+            if auto && install::self_update(&paths, &pr).ok().flatten().is_some() {
+                let _ = proxy.send_event(Msg::SelfUpdated);
+            }
         });
     }
 
@@ -414,16 +417,15 @@ impl App {
         let (paths, proxy, pr) = (self.paths.clone(), self.proxy.clone(), self.progress.clone());
         let fresh = !self.installed();
         std::thread::spawn(move || {
-            let r = install::update_edition(&paths, &pr, fresh).and_then(|o| {
-                install::refresh_scripts(&paths, |_| {});
-                pr.set(install::PH_LAUNCHER);
-                let me = install::self_update(&paths, &pr).unwrap_or(None);
-                if paths.exe_installed() {
-                    let _ = install::write_desktop_entry(&paths);
-                }
-                Ok((o, me))
-            });
-            let _ = proxy.send_event(Msg::Updated(r));
+            let r = install::update_edition(&paths, &pr, fresh);
+            install::refresh_scripts(&paths, |_| {});
+            pr.set(install::PH_LAUNCHER);
+            let me = install::self_update(&paths, &pr).unwrap_or(None);
+            pr.set(install::PH_IDLE);
+            if paths.exe_installed() {
+                let _ = install::write_desktop_entry(&paths);
+            }
+            let _ = proxy.send_event(Msg::Updated(r, me));
         });
     }
 
@@ -617,10 +619,14 @@ impl App {
                 self.job = Job::Idle;
                 self.remote = Some(r);
             }
-            Msg::Updated(r) => {
+            Msg::SelfUpdated => install::restart(&self.paths),
+            Msg::Updated(r, me) => {
                 self.job = Job::Idle;
+                if me.is_some() {
+                    install::restart(&self.paths);
+                }
                 match r {
-                    Ok((o, me)) => {
+                    Ok(o) => {
                         match &o {
                             Outcome::UpToDate(v, log) => {
                                 self.remote = Some(Ok(Status { version: v.clone(), updated: true, log: log.clone() }));
@@ -635,9 +641,6 @@ impl App {
                             Outcome::NotReleased => {
                                 self.remote = Some(Ok(Status { version: String::new(), updated: false, log: String::new() }));
                             }
-                        }
-                        if me.is_some() {
-                            install::restart(&self.paths);
                         }
                     }
                     Err(e) => self.note(format!("Update failed: {e}"), ERR),
