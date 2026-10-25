@@ -1,4 +1,5 @@
 use super::*;
+use winit::event::MouseScrollDelta;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Btn {
@@ -224,10 +225,10 @@ impl App {
         }
         self.draw_panel(g, self.panel, k, k > 0.5, t, motion, it);
 
-        let main = self.panel == Panel::Main || self.panel == Panel::Settings || self.panel == Panel::Help;
+        let main = matches!(self.panel, Panel::Main | Panel::Settings | Panel::Help | Panel::Changelog);
         if main {
             let gear = if self.panel == Panel::Settings { ICON_X } else { ICON_GEAR };
-            let help = if self.panel == Panel::Help { ICON_X } else { ICON_HELP };
+            let help = if matches!(self.panel, Panel::Help | Panel::Changelog) { ICON_X } else { ICON_HELP };
             let ia = (it * 3.0 - 1.2).clamp(0.0, 1.0);
             self.circle_button(g, Id::Gear, 462.0, 70.0, gear, ia);
             self.circle_button(g, Id::Help, 462.0, 344.0, help, ia);
@@ -244,6 +245,7 @@ impl App {
             Panel::Main => self.draw_main(g, alpha, live, t, motion, it),
             Panel::Settings => self.draw_settings(g, alpha, live, dy),
             Panel::Help => self.draw_help(g, alpha, live, dy),
+            Panel::Changelog => self.draw_changelog(g, alpha, live, dy),
         }
     }
 
@@ -418,17 +420,77 @@ impl App {
         if !log.is_empty() {
             y += 12.0;
             g.gfx.text(Font::Bold, 15.0, "What's new", 40.0, y, Align::Left, BTN_ON_TEXT.a(alpha));
-            y += 22.0;
-            for l in g.gfx.text.wrap(Font::Medium, 15.0, &log, 420.0).into_iter().take(2) {
-                g.gfx.text(Font::Medium, 15.0, &l, 40.0, y, Align::Left, BODY.a(alpha));
-                y += 22.0;
-            }
+            let title = log_title(&log);
+            let title = g.gfx.text.ellipsize(Font::Medium, 15.0, &title, 180.0);
+            g.gfx.text(Font::Medium, 15.0, &title, 140.0, y, Align::Left, SUBTLE.a(alpha));
+            self.button(g, Id::Changelog, [330.0, y - 21.0, 130.0, 30.0], "See changelog", Btn::Secondary, true, alpha, live);
         }
         let by = 304.0 + dy;
         self.button(g, Id::Discord, [40.0, by, 120.0, 36.0], "Discord", Btn::Secondary, true, alpha, live);
         self.button(g, Id::Backup, [170.0, by, 140.0, 36.0], "Backup Discord", Btn::Secondary, true, alpha, live);
         let has_log = launch::log_path(&self.paths).exists();
         self.button(g, Id::OpenLog, [320.0, by, 104.0, 36.0], "Open log", Btn::Secondary, has_log, alpha, live);
+    }
+
+    fn draw_changelog(&mut self, g: &mut Gl, alpha: f32, live: bool, dy: f32) {
+        g.gfx.fill(0.0, TOP, W, H, 0.0, BG.a(0.86 * alpha));
+        self.heading(g, "What's new", 78.0 + dy, alpha);
+        if let Some(Ok(s)) = &self.remote {
+            let hw = g.gfx.text.measure(Font::Bold, 20.0, "What's new");
+            g.gfx.text(Font::Medium, 14.0, &format!("v{}", s.version), 40.0 + hw + 10.0, 78.0 + dy, Align::Left, SUBTLE.a(alpha));
+        }
+        let (vx, vy, vw, vh) = (40.0, 94.0 + dy, 400.0, 262.0);
+        let log = self.remote_log();
+        let mut items: Vec<(Rgba, Option<Rgba>, Font, String)> = Vec::new();
+        for raw in log.lines() {
+            let line = raw.trim();
+            if line.is_empty() {
+                items.push((BODY, None, Font::Medium, String::new()));
+            } else if line.starts_with('=') && line.ends_with('=') {
+                items.push((TITLE, None, Font::Bold, line.trim_matches('=').trim().to_string()));
+            } else {
+                let dot = match line.split_whitespace().next().unwrap_or("") {
+                    "Added" => Some(GREEN),
+                    "Fixed" => Some(WARN),
+                    "Removed" => Some(RED),
+                    _ => Some(SUBTLE),
+                };
+                for (i, l) in g.gfx.text.wrap(Font::Medium, 14.0, line, vw - 24.0).into_iter().enumerate() {
+                    items.push((BODY, if i == 0 { dot } else { None }, Font::Medium, l));
+                }
+            }
+        }
+        let h: f32 = items.iter().map(|(_, _, f, t)| if t.is_empty() { 8.0 } else if *f == Font::Bold { 28.0 } else { 21.0 }).sum();
+        self.log_max = (h - vh + 6.0).max(0.0);
+        self.log_target = self.log_target.clamp(0.0, self.log_max);
+        ease(&mut self.log_scroll, self.log_target, self.dt, 16.0);
+        g.gfx.clip = Some([vx - 4.0, vy, vw + 8.0, vh]);
+        let mut y = vy + 16.0 - self.log_scroll;
+        for (c, dot, f, t) in &items {
+            if t.is_empty() {
+                y += 8.0;
+                continue;
+            }
+            if y > vy - 30.0 && y < vy + vh + 30.0 {
+                if *f == Font::Bold {
+                    g.gfx.text(Font::Bold, 15.0, t, vx, y + 2.0, Align::Left, c.a(alpha));
+                } else {
+                    if let Some(d) = dot {
+                        g.gfx.fill(vx + 2.0, y - 8.0, 6.0, 6.0, 3.0, d.a(alpha));
+                    }
+                    g.gfx.text(Font::Medium, 14.0, t, vx + 18.0, y, Align::Left, c.a(alpha));
+                }
+            }
+            y += if *f == Font::Bold { 28.0 } else { 21.0 };
+        }
+        g.gfx.clip = None;
+        if self.log_max > 0.0 {
+            let th = (vh * vh / (vh + self.log_max)).max(24.0);
+            let ty = vy + (vh - th) * (self.log_scroll / self.log_max).clamp(0.0, 1.0);
+            g.gfx.fill(vx + vw + 14.0, vy, 3.0, vh, 1.5, Rgba::hex(0xffffff).a(0.05 * alpha));
+            g.gfx.fill(vx + vw + 14.0, ty, 3.0, th, 1.5, MINT.a(0.55 * alpha));
+        }
+        let _ = live;
     }
 
     // ASKPASS WINDOW
@@ -542,6 +604,16 @@ impl ApplicationHandler<Msg> for App {
                 }
             },
             WindowEvent::KeyboardInput { event, .. } => self.key(&event),
+            WindowEvent::MouseWheel { delta, .. } => {
+                if self.panel == Panel::Changelog {
+                    let s = self.gl.as_ref().map(|g| g.gfx.text.scale).unwrap_or(1.0);
+                    let dy = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y * 44.0,
+                        MouseScrollDelta::PixelDelta(p) => p.y as f32 / s,
+                    };
+                    self.log_target = (self.log_target - dy).clamp(0.0, self.log_max);
+                }
+            }
             _ => {}
         }
     }
@@ -563,4 +635,9 @@ impl ApplicationHandler<Msg> for App {
         }
         el.set_control_flow(ControlFlow::WaitUntil(self.next));
     }
+}
+
+fn log_title(log: &str) -> String {
+    let first = log.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    first.trim_matches('=').trim().to_string()
 }

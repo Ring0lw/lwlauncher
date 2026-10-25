@@ -1,5 +1,7 @@
 in vec2 v_local;
 in vec2 v_uv;
+in vec2 v_px;
+flat in vec4 v_clip;
 flat in vec2 v_half;
 flat in vec4 v_fill;
 flat in vec4 v_border;
@@ -21,6 +23,7 @@ float box(vec2 p, vec2 b, float r) {
 }
 
 void main() {
+    if (v_px.x < v_clip.x || v_px.y < v_clip.y || v_px.x > v_clip.z || v_px.y > v_clip.w) discard;
     int kind = int(v_p0.w + 0.5);
     if (kind == 1) {
         float c = texture(u_atlas, v_uv).r;
