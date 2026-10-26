@@ -211,7 +211,7 @@ impl App {
             (Some(Ok(st)), Some(v)) if st.version != v => (format!("Update available \u{b7} v{v} \u{2192} v{}", st.version), WARN, false),
             (_, Some(v)) if self.installed() => (format!("External v{v} \u{b7} up to date"), MUTED, false),
             (Some(Ok(st)), None) => (format!("Not installed \u{b7} v{} available", st.version), MUTED, false),
-            (Some(Err(_)), None) => ("Couldn't reach git.catapis.uk".into(), ERR, false),
+            (Some(Err(_)), None) => ("Couldn't reach linusware.org".into(), ERR, false),
             _ => ("Not installed".into(), MUTED, false),
         }
     }
@@ -398,7 +398,7 @@ impl App {
     fn draw_help(&mut self, g: &mut Gl, alpha: f32, live: bool, dy: f32) {
         g.gfx.fill(0.0, TOP, W, H, 0.0, BG.a(0.86 * alpha));
         self.heading(g, "Help", 78.0 + dy, alpha);
-        let para = "Check for updates downloads the newest build from git.catapis.uk and checks it before installing.";
+        let para = "Check for updates downloads the newest build from linusware.org and checks it before installing.";
         let lines = g.gfx.text.wrap(Font::Medium, 15.0, para, 420.0);
         let mut y = 110.0 + dy;
         for l in &lines {

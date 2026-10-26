@@ -42,13 +42,24 @@ impl Outcome {
     }
 }
 
-pub fn status(paths: &Paths, what: &str) -> Result<Status, String> {
-    let text = net::fetch(&paths.url(&format!("{what}/status.json")))?;
-    Status::parse(&text).ok_or_else(|| "bad status.json".into())
+// SOURCES
+fn status_at(paths: &Paths, what: &str) -> Result<(Status, String), String> {
+    let mut err = String::from("no download source");
+    for base in &paths.sources {
+        match net::fetch(&format!("{base}/{what}/status.json")) {
+            Ok(text) => match Status::parse(&text) {
+                Some(st) => return Ok((st, base.clone())),
+                None => err = "bad status.json".into(),
+            },
+            Err(e) => err = e,
+        }
+    }
+    Err(err)
 }
 
-pub const RELEASES: &str = "https://github.com/Ring0lw/lwlauncher/releases";
-pub const LATEST_API: &str = "https://api.github.com/repos/Ring0lw/lwlauncher/releases/latest";
+pub fn status(paths: &Paths, what: &str) -> Result<Status, String> {
+    status_at(paths, what).map(|(st, _)| st)
+}
 
 fn md5sum(url: &str) -> Result<String, String> {
     let text = net::fetch(url)?;
@@ -77,7 +88,7 @@ fn fetch_verified(url: &str, md5_url: &str, dest: &Path, pr: &Progress) -> Resul
 
 // EDITION
 pub fn update_edition(paths: &Paths, pr: &Progress, force: bool) -> Result<Outcome, String> {
-    let st = status(paths, EDITION)?;
+    let (st, base) = status_at(paths, EDITION)?;
     if !st.updated {
         return Ok(Outcome::NotReleased);
     }
@@ -89,7 +100,7 @@ pub fn update_edition(paths: &Paths, pr: &Progress, force: bool) -> Result<Outco
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let archive = dir.join(".download.tmp");
     let result = (|| {
-        fetch_verified(&paths.url(&format!("{EDITION}/bin/linusware.tar.gz")), &paths.url(&format!("{EDITION}/bin/MD5SUM")), &archive, pr)?;
+        fetch_verified(&format!("{base}/{EDITION}/bin/linusware.tar.gz"), &format!("{base}/{EDITION}/bin/MD5SUM"), &archive, pr)?;
         pr.set(PH_INSTALL);
         unpack(&archive, &dir)?;
         write_atomic(&dir.join("version.txt"), format!("{}\n", st.version).as_bytes()).map_err(|e| e.to_string())
@@ -146,22 +157,33 @@ pub fn self_update(paths: &Paths, pr: &Progress) -> Result<Option<String>, Strin
     if !paths.exe_installed() {
         return Ok(None);
     }
-    let Ok(tag) = net::latest_tag(LATEST_API, RELEASES) else { return Ok(None) };
-    let version = tag.trim_start_matches('v').to_string();
-    if !net::newer(&version, crate::VERSION) {
+    let Ok((st, base)) = status_at(paths, "launcher") else { return Ok(None) };
+    if !st.updated || !net::newer(&st.version, crate::VERSION) {
         return Ok(None);
     }
     let tmp = paths.install.join(".lwlauncher.new");
-    let base = format!("{RELEASES}/download/{tag}");
-    let r = fetch_verified(&format!("{base}/lwlauncher"), &format!("{base}/lwlauncher.md5"), &tmp, pr).and_then(|_| {
+    let r = fetch_verified(&format!("{base}/launcher/bin/lwlauncher"), &format!("{base}/launcher/bin/MD5SUM"), &tmp, pr).and_then(|_| {
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        reports(&tmp, &st.version)?;
         std::fs::rename(&tmp, &paths.exe).map_err(|e| e.to_string())
     });
     pr.set(PH_IDLE);
     if r.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
-    r.map(|_| Some(version))
+    r.map(|_| Some(st.version))
+}
+
+fn reports(exe: &Path, want: &str) -> Result<(), String> {
+    let out = std::process::Command::new(exe)
+        .arg("--version")
+        .env("LINUSWARE_DIR", exe.with_extension("check"))
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("new launcher: {e}"))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let got = text.trim().trim_start_matches("lwlauncher").trim();
+    if got == want.trim_start_matches('v') { Ok(()) } else { Err(format!("new launcher reports v{got}, expected v{want}")) }
 }
 
 pub fn restart(paths: &Paths) -> ! {
@@ -179,8 +201,12 @@ pub fn refresh_scripts(paths: &Paths, mut note: impl FnMut(String)) {
         if !local.exists() {
             continue;
         }
-        let url = paths.url(script);
-        let Ok((_, id)) = net::head(&url) else { continue };
+        let Some((url, id)) = paths.sources.iter().find_map(|b| {
+            let url = format!("{b}/{script}");
+            net::head(&url).ok().map(|(_, id)| (url, id))
+        }) else {
+            continue;
+        };
         if id.is_empty() {
             continue;
         }

@@ -10,7 +10,7 @@ cargo build --release
 
 ## Install(User)
 ```bash
-curl -fsSL https://github.com/Ring0lw/lwlauncher/releases/latest/download/install.sh | bash
+curl -fsSL https://linusware.org/install.sh | bash
 ```
 
 ![mrpenis](assets/mrpenis.jpg)

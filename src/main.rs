@@ -11,12 +11,12 @@ use std::path::{Path, PathBuf};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const EDITION: &str = "external";
-pub const DEFAULT_BASE: &str = "https://git.catapis.uk/linusware/main/raw/branch/main";
+pub const SOURCES: [&str; 2] = ["https://linusware.org/dl", "https://linusware.pages.dev/dl"];
 
 // PATHS
 #[derive(Clone)]
 pub struct Paths {
-    pub base_url: String,
+    pub sources: Vec<String>,
     pub install: PathBuf,
     pub exe: PathBuf,
     pub home: PathBuf,
@@ -32,17 +32,16 @@ impl Paths {
                 _ => home.join(".local/share/linusware"),
             },
         };
-        let base_url = std::env::var("BASE_URL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| DEFAULT_BASE.into());
+        let sources = match std::env::var("BASE_URL").ok().filter(|s| !s.trim().is_empty()) {
+            Some(list) => list.split_whitespace().map(|s| s.trim_end_matches('/').to_string()).collect(),
+            None => SOURCES.iter().map(|s| s.to_string()).collect(),
+        };
         let exe = std::env::current_exe().unwrap_or_else(|_| install.join("lwlauncher"));
-        Paths { base_url: base_url.trim_end_matches('/').into(), install, exe, home }
+        Paths { sources, install, exe, home }
     }
 
     pub fn edition(&self) -> PathBuf {
         self.install.join(EDITION)
-    }
-
-    pub fn url(&self, rel: &str) -> String {
-        format!("{}/{}", self.base_url, rel)
     }
 
     pub fn config_dir(&self) -> PathBuf {
