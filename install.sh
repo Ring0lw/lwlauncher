@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="https://github.com/Ring0lw/lwlauncher"
+SOURCES="${BASE_URL:-https://linusware.org/dl https://linusware.pages.dev/dl}"
 INSTALL_DIR="${LINUSWARE_DIR:-${XDG_DATA_HOME:-${HOME}/.local/share}/linusware}"
 BIN_DIR="${BIN_DIR:-${HOME}/.local/bin}"
 
@@ -39,11 +39,14 @@ export LINUSWARE_DIR="$INSTALL_DIR"
 info "Downloading the launcher..."
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
-tag=$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/Ring0lw/lwlauncher/releases/latest" 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1) || true
-if [ -n "$tag" ]; then url="${REPO}/releases/download/${tag}"; else url="${REPO}/releases/latest/download"; fi
-want=$(curl -fsSL "${url}/lwlauncher.md5" | cut -c1-32) || error "Could not fetch lwlauncher.md5"
-curl -fSL --progress-bar -o "$tmp" "${url}/lwlauncher" || error "Could not download the launcher"
-[ "$(md5sum "$tmp" | cut -d' ' -f1)" = "$want" ] || error "MD5 mismatch for the launcher"
+got=""
+for base in $SOURCES; do
+  want=$(curl -fsSL "${base}/launcher/bin/MD5SUM" 2>/dev/null | cut -c1-32) || continue
+  curl -fSL --progress-bar -o "$tmp" "${base}/launcher/bin/lwlauncher" || continue
+  [ "$(md5sum "$tmp" | cut -d' ' -f1)" = "$want" ] && { got="$base"; break; }
+  warn "MD5 mismatch for the launcher from ${base}"
+done
+[ -n "$got" ] || error "Could not download the launcher"
 chmod +x "$tmp"
 mv "$tmp" "${INSTALL_DIR}/lwlauncher"
 ln -sfn "${INSTALL_DIR}/lwlauncher" "${BIN_DIR}/lw"

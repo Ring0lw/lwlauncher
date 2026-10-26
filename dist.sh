@@ -9,10 +9,13 @@ cargo zigbuild --release --target $T.2.17
 
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 rm -rf dist
-mkdir -p dist/catapis
+mkdir -p dist/dl/launcher/bin
 cp target/$T/release/lwlauncher dist/lwlauncher
 md5sum dist/lwlauncher | cut -d' ' -f1 > dist/lwlauncher.md5
 cp install.sh dist/install.sh
-cp install.sh scripts/launcher.sh scripts/update.sh dist/catapis/
+cp dist/lwlauncher dist/dl/launcher/bin/lwlauncher
+cp dist/lwlauncher.md5 dist/dl/launcher/bin/MD5SUM
+printf '{\n    "version": "%s",\n    "updated": true,\n    "log": ""\n}\n' "$ver" > dist/dl/launcher/status.json
+cp install.sh scripts/launcher.sh scripts/update.sh dist/dl/
 
 echo "dist: ok v$ver ($(du -h dist/lwlauncher | cut -f1), glibc $(objdump -T dist/lwlauncher | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1))"
