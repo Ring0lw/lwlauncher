@@ -8,6 +8,10 @@ const MEDIUM: &[u8] = include_bytes!("../assets/fonts/NotoSans-Medium.ttf");
 const ICONS: &[u8] = include_bytes!("../assets/fonts/Icons.ttf");
 const LOGO_Z: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/logo.z"));
 pub const LOGO_SIZE: usize = 256;
+const COVER_W: usize = 424;
+const COVER_H: usize = 636;
+const COVER_ROBLOX: &[u8] = include_bytes!("../assets/cover_roblox.rgba");
+const COVER_CS2: &[u8] = include_bytes!("../assets/cover_cs2.rgba");
 const ATLAS: usize = 1024;
 
 // COLOR
@@ -346,10 +350,12 @@ pub struct Gfx {
     vbo: glow::Buffer,
     atlas: glow::Texture,
     logo: glow::Texture,
+    cover: [glow::Texture; 2],
     fx: glow::Texture,
     pub fx_size: (usize, usize),
     pub text: Text,
     pub insts: Vec<Inst>,
+    pub ox: f32,
     pub oy: f32,
     pub clip: Option<[f32; 4]>,
     pub res: (f32, f32),
@@ -413,12 +419,18 @@ impl Gfx {
             let n = LOGO_SIZE as i32;
             gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, n, n, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&px)));
             gl.generate_mipmap(glow::TEXTURE_2D);
+            let cover = [COVER_ROBLOX, COVER_CS2].map(|data| {
+                let t = texture(&gl, glow::LINEAR_MIPMAP_LINEAR);
+                gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, COVER_W as i32, COVER_H as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(data)));
+                gl.generate_mipmap(glow::TEXTURE_2D);
+                t
+            });
             let fx = texture(&gl, glow::LINEAR);
             gl.use_program(Some(ui));
-            for (name, unit) in [("u_atlas", 0), ("u_image", 1), ("u_fx", 2)] {
+            for (name, unit) in [("u_atlas", 0), ("u_image", 1), ("u_fx", 2), ("u_cover0", 3), ("u_cover1", 4)] {
                 gl.uniform_1_i32(gl.get_uniform_location(ui, name).as_ref(), unit);
             }
-            Ok(Gfx { gl, bg, ui, vao, vbo, atlas, logo, fx, fx_size: (1, 1), text: Text::new(scale), insts: Vec::with_capacity(256), res: (1.0, 1.0), oy: 0.0, clip: None })
+            Ok(Gfx { gl, bg, ui, vao, vbo, atlas, logo, cover, fx, fx_size: (1, 1), text: Text::new(scale), insts: Vec::with_capacity(256), res: (1.0, 1.0), ox: 0.0, oy: 0.0, clip: None })
         }
     }
 
@@ -439,7 +451,7 @@ impl Gfx {
     fn push(&mut self, mut i: Inst) {
         if let Some([x, y, w, h]) = self.clip {
             let s = self.text.scale;
-            i.clip = [x * s, (y + self.oy) * s, (x + w) * s, (y + h + self.oy) * s];
+            i.clip = [(x + self.ox) * s, (y + self.oy) * s, (x + w + self.ox) * s, (y + h + self.oy) * s];
         }
         self.insts.push(i);
     }
@@ -451,6 +463,7 @@ impl Gfx {
     // DRAW
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, st: BoxStyle) {
         let s = self.s();
+        let x = x + self.ox;
         let y = y + self.oy;
         let mut i = Inst { rect: [x * s, y * s, w * s, h * s], ..Default::default() };
         i.fill = st.fill.unwrap_or(Rgba::NONE).pm();
@@ -485,6 +498,7 @@ impl Gfx {
 
     pub fn spinner(&mut self, cx: f32, cy: f32, r: f32, thick: f32, c: Rgba, rot: f32) {
         let s = self.s();
+        let cx = cx + self.ox;
         let cy = cy + self.oy;
         let mut i = Inst { rect: [(cx - r) * s, (cy - r) * s, 2.0 * r * s, 2.0 * r * s], ..Default::default() };
         i.fill = c.pm();
@@ -495,6 +509,7 @@ impl Gfx {
 
     pub fn image(&mut self, x: f32, y: f32, w: f32, h: f32, alpha: f32) {
         let s = self.s();
+        let x = x + self.ox;
         let y = y + self.oy;
         let mut i = Inst { rect: [x * s, y * s, w * s, h * s], uv: [0.0, 0.0, 1.0, 1.0], ..Default::default() };
         i.fill = [alpha, alpha, alpha, alpha];
@@ -502,8 +517,20 @@ impl Gfx {
         self.push(i);
     }
 
+    pub fn cover(&mut self, slot: usize, x: f32, y: f32, w: f32, h: f32, radius: f32, alpha: f32) {
+        let s = self.s();
+        let x = x + self.ox;
+        let y = y + self.oy;
+        let mut i = Inst { rect: [x * s, y * s, w * s, h * s], uv: [0.0, 0.0, 1.0, 1.0], ..Default::default() };
+        i.fill = [alpha, alpha, alpha, alpha];
+        i.p0[0] = (radius * s).min(w.min(h) * s * 0.5);
+        i.p0[3] = 5.0 + slot as f32;
+        self.push(i);
+    }
+
     pub fn fx(&mut self, x: f32, y: f32, uv: [f32; 4], c: Rgba) {
         let s = self.s();
+        let x = x + self.ox;
         let y = y + self.oy;
         let (fw, fh) = (self.fx_size.0 as f32, self.fx_size.1 as f32);
         let (w, h) = ((uv[2] - uv[0]) * fw, (uv[3] - uv[1]) * fh);
@@ -526,7 +553,7 @@ impl Gfx {
         let px = size * sc;
         let font = self.text.font(f).clone();
         let sf = font.as_scaled(PxScale::from(px));
-        let mut pen = x0 * sc;
+        let mut pen = (x0 + self.ox) * sc;
         let by = ((base + self.oy) * sc).round();
         let mut prev = None;
         let fill = c.pm();
@@ -583,6 +610,10 @@ impl Gfx {
             gl.bind_texture(glow::TEXTURE_2D, Some(self.logo));
             gl.active_texture(glow::TEXTURE2);
             gl.bind_texture(glow::TEXTURE_2D, Some(self.fx));
+            gl.active_texture(glow::TEXTURE3);
+            gl.bind_texture(glow::TEXTURE_2D, Some(self.cover[0]));
+            gl.active_texture(glow::TEXTURE4);
+            gl.bind_texture(glow::TEXTURE_2D, Some(self.cover[1]));
             gl.active_texture(glow::TEXTURE0);
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
             let bytes = std::slice::from_raw_parts(self.insts.as_ptr() as *const u8, self.insts.len() * std::mem::size_of::<Inst>());

@@ -60,9 +60,11 @@ const ICON_X: &str = "\u{f00d}";
 const ICON_CHECK: &str = "\u{f058}";
 const ICON_LOCK: &str = "\u{f023}";
 
-const W: f32 = 500.0;
+const W: f32 = 600.0;
+const OX: f32 = 50.0;
+const OY: f32 = 30.0;
 const TOP: f32 = 30.0;
-const H: f32 = 352.0;
+const H: f32 = 412.0;
 const ASK_W: f32 = 380.0;
 const ASK_H: f32 = 184.0;
 const HOLD: f32 = 1.2;
@@ -88,6 +90,9 @@ pub enum Msg {
 enum Id {
     Gear,
     Help,
+    GameRoblox,
+    GameCs2,
+    Back,
     External,
     Delete,
     Update,
@@ -105,10 +110,45 @@ enum Id {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Panel {
+    Pick,
     Main,
     Settings,
     Help,
     Changelog,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum Game {
+    Roblox,
+    Cs2,
+}
+
+impl Game {
+    pub const ALL: [Game; 2] = [Game::Roblox, Game::Cs2];
+    pub fn ed(self) -> &'static str {
+        match self {
+            Game::Roblox => "external",
+            Game::Cs2 => "cs2",
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Game::Roblox => "Roblox",
+            Game::Cs2 => "CS2",
+        }
+    }
+    pub fn slot(self) -> usize {
+        match self {
+            Game::Roblox => 0,
+            Game::Cs2 => 1,
+        }
+    }
+    fn id(self) -> Id {
+        match self {
+            Game::Roblox => Id::GameRoblox,
+            Game::Cs2 => Id::GameCs2,
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -166,12 +206,15 @@ struct App {
     mouse_s: (f32, f32),
     mouse_k: f32,
     hits: Vec<Hit>,
+    hit_ox: f32,
+    hit_oy: f32,
     anims: HashMap<Id, Anim>,
     knobs: HashMap<Id, f32>,
     log_scroll: f32,
     log_target: f32,
     log_max: f32,
     pressed: Option<Id>,
+    game: Option<Game>,
     panel: Panel,
     panel_t: f32,
     prev_panel: Panel,
@@ -237,15 +280,18 @@ pub fn run(paths: Paths, mode: Mode) -> Result<i32, String> {
         mouse_s: (-1e4, -1e4),
         mouse_k: 0.0,
         hits: Vec::new(),
+        hit_ox: 0.0,
+        hit_oy: 0.0,
         anims: HashMap::new(),
         knobs: HashMap::new(),
         log_scroll: 0.0,
         log_target: 0.0,
         log_max: 0.0,
         pressed: None,
-        panel: Panel::Main,
+        game: None,
+        panel: Panel::Pick,
         panel_t: 1.0,
-        prev_panel: Panel::Main,
+        prev_panel: Panel::Pick,
         job: Job::Idle,
         progress: Arc::new(Progress::default()),
         remote: None,
@@ -396,7 +442,7 @@ impl App {
         self.job = Job::Checking;
         let (paths, proxy, pr, auto) = (self.paths.clone(), self.proxy.clone(), self.progress.clone(), self.cfg.auto_update);
         std::thread::spawn(move || {
-            let _ = proxy.send_event(Msg::Checked(install::status(&paths, crate::EDITION)));
+            let _ = proxy.send_event(Msg::Checked(install::status(&paths, &paths.ed)));
             if auto && install::self_update(&paths, &pr).ok().flatten().is_some() {
                 let _ = proxy.send_event(Msg::SelfUpdated);
             }
@@ -496,6 +542,31 @@ impl App {
         self.note("LinusWare removed", OK);
     }
 
+    fn pick(&mut self, game: Game) {
+        self.game = Some(game);
+        self.paths.ed = game.ed().to_string();
+        self.remote = None;
+        self.tone = None;
+        self.job = Job::Idle;
+        self.intro = Instant::now();
+        self.set_panel(Panel::Main);
+        self.start_check();
+    }
+
+    fn to_pick(&mut self) {
+        self.game = None;
+        self.remote = None;
+        self.tone = None;
+        self.job = Job::Idle;
+        self.ask = None;
+        self.intro = Instant::now();
+        self.set_panel(Panel::Pick);
+    }
+
+    pub(super) fn gname(&self) -> &'static str {
+        self.game.map(|g| g.name()).unwrap_or("LinusWare")
+    }
+
     fn set_panel(&mut self, p: Panel) {
         if self.panel != p {
             self.prev_panel = self.panel;
@@ -549,6 +620,9 @@ impl App {
 
     fn click(&mut self, id: Id) {
         match id {
+            Id::GameRoblox => self.pick(Game::Roblox),
+            Id::GameCs2 => self.pick(Game::Cs2),
+            Id::Back => self.to_pick(),
             Id::Gear => self.set_panel(if self.panel == Panel::Settings { Panel::Main } else { Panel::Settings }),
             Id::Help => self.set_panel(if matches!(self.panel, Panel::Help | Panel::Changelog) { Panel::Main } else { Panel::Help }),
             Id::External => self.start_launch(),
@@ -786,11 +860,13 @@ impl App {
             Mode::Askpass(_) => self.draw_askpass(&mut g, t),
         }
         if fade > 0.0 {
+            g.gfx.ox = 0.0;
+            g.gfx.oy = -TOP;
             g.gfx.fill(0.0, TOP, W, H, 0.0, BG.a(fade));
         }
         let size = g.window.inner_size();
         let breath = 0.5 + 0.5 * (t * 1.3).sin() * motion;
-        g.gfx.render(size.width, size.height, t, mouse, self.mouse_k, [250.0, 107.0 - TOP, 0.0, 0.7 + 0.3 * breath]);
+        g.gfx.render(size.width, size.height, t, mouse, self.mouse_k, [300.0, 107.0 + OY - TOP, 0.0, 0.7 + 0.3 * breath]);
         g.window.pre_present_notify();
         let _ = g.surface.swap_buffers(&g.ctx);
         if !self.shown {

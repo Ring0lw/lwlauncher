@@ -88,7 +88,8 @@ fn fetch_verified(url: &str, md5_url: &str, dest: &Path, pr: &Progress) -> Resul
 
 // EDITION
 pub fn update_edition(paths: &Paths, pr: &Progress, force: bool) -> Result<Outcome, String> {
-    let (st, base) = status_at(paths, EDITION)?;
+    let ed = paths.ed.as_str();
+    let (st, base) = status_at(paths, ed)?;
     if !st.updated {
         return Ok(Outcome::NotReleased);
     }
@@ -100,7 +101,7 @@ pub fn update_edition(paths: &Paths, pr: &Progress, force: bool) -> Result<Outco
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let archive = dir.join(".download.tmp");
     let result = (|| {
-        fetch_verified(&format!("{base}/{EDITION}/bin/linusware.tar.gz"), &format!("{base}/{EDITION}/bin/MD5SUM"), &archive, pr)?;
+        fetch_verified(&format!("{base}/{ed}/bin/linusware.tar.gz"), &format!("{base}/{ed}/bin/MD5SUM"), &archive, pr)?;
         pr.set(PH_INSTALL);
         unpack(&archive, &dir)?;
         write_atomic(&dir.join("version.txt"), format!("{}\n", st.version).as_bytes()).map_err(|e| e.to_string())

@@ -36,6 +36,15 @@ pub(super) fn window_icon() -> Option<Icon> {
     Icon::from_rgba(out, m as u32, m as u32).ok()
 }
 
+fn scrim(g: &mut Gl, alpha: f32) {
+    let (ox, oy) = (g.gfx.ox, g.gfx.oy);
+    g.gfx.ox = 0.0;
+    g.gfx.oy = -TOP;
+    g.gfx.fill(0.0, TOP, W, H, 0.0, BG.a(0.86 * alpha));
+    g.gfx.ox = ox;
+    g.gfx.oy = oy;
+}
+
 fn scaled(r: [f32; 4], s: f32) -> [f32; 4] {
     let (cx, cy) = (r[0] + r[2] * 0.5, r[1] + r[3] * 0.5);
     [cx - r[2] * s * 0.5, cy - r[3] * s * 0.5, r[2] * s, r[3] * s]
@@ -43,7 +52,7 @@ fn scaled(r: [f32; 4], s: f32) -> [f32; 4] {
 
 impl App {
     fn hit(&mut self, id: Id, r: [f32; 4], enabled: bool) {
-        self.hits.push(Hit { id, r, enabled });
+        self.hits.push(Hit { id, r: [r[0] + self.hit_ox, r[1] + self.hit_oy, r[2], r[3]], enabled });
     }
 
     fn st(&self, id: Id) -> (f32, f32, f32, f32, Option<(f32, f32, f32, f32)>) {
@@ -207,9 +216,9 @@ impl App {
         }
         let cur = self.paths.installed_version();
         match (&self.remote, cur) {
-            (Some(Ok(st)), _) if !st.updated => ("External isn't released yet".into(), WARN, false),
+            (Some(Ok(st)), _) if !st.updated => (format!("{} isn't released yet", self.gname()), WARN, false),
             (Some(Ok(st)), Some(v)) if st.version != v => (format!("Update available \u{b7} v{v} \u{2192} v{}", st.version), WARN, false),
-            (_, Some(v)) if self.installed() => (format!("External v{v} \u{b7} up to date"), MUTED, false),
+            (_, Some(v)) if self.installed() => (format!("{} v{v} \u{b7} up to date", self.gname()), MUTED, false),
             (Some(Ok(st)), None) => (format!("Not installed \u{b7} v{} available", st.version), MUTED, false),
             (Some(Err(_)), None) => ("Couldn't reach linusware.org".into(), ERR, false),
             _ => ("Not installed".into(), MUTED, false),
@@ -217,13 +226,26 @@ impl App {
     }
 
     // LAUNCHER
+    fn shove(p: Panel) -> (f32, f32) {
+        if matches!(p, Panel::Pick) { (0.0, 0.0) } else { (OX, OY) }
+    }
+
+    fn park(g: &mut Gl, off: (f32, f32)) {
+        g.gfx.ox = off.0;
+        g.gfx.oy = off.1 - TOP;
+    }
+
     pub(super) fn draw_launcher(&mut self, g: &mut Gl, t: f32, motion: f32) {
         let it = (Instant::now() - self.intro).as_secs_f32();
         let k = self.panel_t;
+        (self.hit_ox, self.hit_oy) = Self::shove(self.panel);
         if k < 0.995 {
+            Self::park(g, Self::shove(self.prev_panel));
             self.draw_panel(g, self.prev_panel, 1.0 - k, false, t, motion, it);
         }
+        Self::park(g, Self::shove(self.panel));
         self.draw_panel(g, self.panel, k, k > 0.5, t, motion, it);
+        Self::park(g, (OX, OY));
 
         let main = matches!(self.panel, Panel::Main | Panel::Settings | Panel::Help | Panel::Changelog);
         if main {
@@ -233,15 +255,56 @@ impl App {
             self.circle_button(g, Id::Gear, 462.0, 70.0, gear, ia);
             self.circle_button(g, Id::Help, 462.0, 344.0, help, ia);
         }
+        if self.panel == Panel::Main && self.game.is_some() && self.panel_t > 0.3 {
+            let a = ((it * 3.0 - 1.0).clamp(0.0, 1.0)) * self.panel_t;
+            let r = [26.0, 54.0, 86.0, 28.0];
+            self.hit(Id::Back, r, true);
+            let (hov, ..) = self.st(Id::Back);
+            g.gfx.rect(r[0], r[1], r[2], r[3], BoxStyle {
+                fill: Some(Rgba::hex(0x141e17).mix(CIRCLE_HI, hov).a(0.7 * a)),
+                radius: 14.0,
+                ..Default::default()
+            });
+            g.gfx.text(Font::Bold, 15.0, "\u{2039}", r[0] + 16.0, r[1] + 19.0, Align::Center, MINT.mix(TITLE, hov).a(a));
+            g.gfx.text(Font::Medium, 12.5, "Games", r[0] + 28.0, r[1] + 18.5, Align::Left, MUTED.mix(BODY, hov).a(a));
+        }
+        Self::park(g, (0.0, 0.0));
     }
 
-    #[allow(clippy::too_many_arguments)]
+    fn draw_pick(&mut self, g: &mut Gl, alpha: f32, live: bool, it: f32) {
+        let stage = |d: f32| ((it - d) / 0.45).clamp(0.0, 1.0);
+        let pop = |x: f32| 1.0 - (1.0 - x).powi(3);
+
+        let sh = pop(stage(0.0));
+        g.gfx.text(Font::Bold, 24.0, "Choose game", W * 0.5, 64.0 + (1.0 - sh) * 6.0, Align::Center, WHITE.a(alpha * sh));
+
+        let (cw, ch, gap) = (212.0, 318.0, 36.0);
+        let x0 = (W - cw * 2.0 - gap) * 0.5;
+        for (n, game) in Game::ALL.into_iter().enumerate() {
+            let st = pop(stage(0.1 + n as f32 * 0.08));
+            let a = alpha * st;
+            let id = game.id();
+            let (hov, press, ..) = self.st(id);
+            let x = x0 + n as f32 * (cw + gap);
+            let y = 84.0 + (1.0 - st) * 12.0 - 4.0 * hov + 2.0 * press;
+            if live && st > 0.9 {
+                self.hit(id, [x, y, cw, ch], true);
+            }
+            g.gfx.cover(game.slot(), x, y, cw, ch, 14.0, a);
+            g.gfx.rect(x, y, cw, ch, BoxStyle {
+                border: Some((Rgba::hex(0xffffff).a((0.08 + 0.22 * hov) * a), 1.0)),
+                radius: 14.0,
+                ..Default::default()
+            });
+        }
+    }
     fn draw_panel(&mut self, g: &mut Gl, p: Panel, alpha: f32, live: bool, t: f32, motion: f32, it: f32) {
         if alpha <= 0.01 {
             return;
         }
         let dy = (1.0 - alpha) * 10.0;
         match p {
+            Panel::Pick => self.draw_pick(g, alpha, live, it),
             Panel::Main => self.draw_main(g, alpha, live, t, motion, it),
             Panel::Settings => self.draw_settings(g, alpha, live, dy),
             Panel::Help => self.draw_help(g, alpha, live, dy),
@@ -303,7 +366,8 @@ impl App {
         let installed = self.installed();
         let idle = !self.busy() && self.ask.is_none();
         let blive = live && self.ask_t < 0.5;
-        self.button(g, Id::External, [109.0, 237.0 + by + (1.0 - s3) * 10.0, 132.0, 46.0], "External", Btn::Secondary, installed && idle, ba * s3, blive);
+        let play = self.gname();
+        self.button(g, Id::External, [109.0, 237.0 + by + (1.0 - s3) * 10.0, 132.0, 46.0], play, Btn::Secondary, installed && idle, ba * s3, blive);
         self.button(g, Id::Delete, [259.0, 237.0 + by + (1.0 - s3) * 10.0, 132.0, 46.0], "Delete LinusWare", Btn::Danger, installed && (idle || self.job == Job::Idle), ba * s3, blive);
 
         let ur = [109.0, 301.0 + by + (1.0 - s4) * 10.0, 282.0, 46.0];
@@ -368,7 +432,7 @@ impl App {
     }
 
     fn draw_settings(&mut self, g: &mut Gl, alpha: f32, live: bool, dy: f32) {
-        g.gfx.fill(0.0, TOP, W, H, 0.0, BG.a(0.86 * alpha));
+        scrim(g, alpha);
         self.heading(g, "Settings", 78.0 + dy, alpha);
         let rows = [
             (Id::TogAuto, "Update on start", "Check for and install updates when the launcher opens", self.cfg.auto_update),
@@ -396,7 +460,7 @@ impl App {
     }
 
     fn draw_help(&mut self, g: &mut Gl, alpha: f32, live: bool, dy: f32) {
-        g.gfx.fill(0.0, TOP, W, H, 0.0, BG.a(0.86 * alpha));
+        scrim(g, alpha);
         self.heading(g, "Help", 78.0 + dy, alpha);
         let para = "Check for updates downloads the newest build from linusware.org and checks it before installing.";
         let lines = g.gfx.text.wrap(Font::Medium, 15.0, para, 420.0);
@@ -433,7 +497,7 @@ impl App {
     }
 
     fn draw_changelog(&mut self, g: &mut Gl, alpha: f32, live: bool, dy: f32) {
-        g.gfx.fill(0.0, TOP, W, H, 0.0, BG.a(0.86 * alpha));
+        scrim(g, alpha);
         self.heading(g, "What's new", 78.0 + dy, alpha);
         if let Some(Ok(s)) = &self.remote {
             let hw = g.gfx.text.measure(Font::Bold, 20.0, "What's new");
@@ -535,7 +599,6 @@ impl ApplicationHandler<Msg> for App {
             if self.paths.exe_installed() {
                 let _ = install::write_desktop_entry(&self.paths);
             }
-            self.start_check();
         }
     }
 

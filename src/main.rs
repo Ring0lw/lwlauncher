@@ -17,6 +17,7 @@ pub const SOURCES: [&str; 2] = ["https://linusware.org/dl", "https://linusware.p
 #[derive(Clone)]
 pub struct Paths {
     pub sources: Vec<String>,
+    pub ed: String,
     pub install: PathBuf,
     pub exe: PathBuf,
     pub home: PathBuf,
@@ -37,11 +38,11 @@ impl Paths {
             None => SOURCES.iter().map(|s| s.to_string()).collect(),
         };
         let exe = std::env::current_exe().unwrap_or_else(|_| install.join("lwlauncher"));
-        Paths { sources, install, exe, home }
+        Paths { sources, ed: EDITION.to_string(), install, exe, home }
     }
 
     pub fn edition(&self) -> PathBuf {
-        self.install.join(EDITION)
+        self.install.join(&self.ed)
     }
 
     pub fn config_dir(&self) -> PathBuf {

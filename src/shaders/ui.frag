@@ -13,6 +13,8 @@ flat in vec4 v_p2;
 uniform sampler2D u_atlas;
 uniform sampler2D u_image;
 uniform sampler2D u_fx;
+uniform sampler2D u_cover0;
+uniform sampler2D u_cover1;
 uniform float u_time;
 uniform float u_scale;
 out vec4 o;
@@ -34,6 +36,13 @@ void main() {
     }
     if (kind == 2) { o = texture(u_image, v_uv) * v_fill.a; return; }
     if (kind == 3) { o = v_fill * texture(u_fx, v_uv).r; return; }
+    if (kind == 5 || kind == 6) {
+        float d = box(v_local, v_half, v_p0.x);
+        float m = 1.0 - smoothstep(-0.8, 0.8, d);
+        vec4 tx = kind == 5 ? texture(u_cover0, v_uv) : texture(u_cover1, v_uv);
+        o = vec4(tx.rgb, 1.0) * v_fill.a * m;
+        return;
+    }
 
     float r = v_p0.x, bw = v_p0.y, gr = v_p0.z;
     float d = box(v_local, v_half, r);

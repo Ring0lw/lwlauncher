@@ -1,8 +1,8 @@
 use crate::Paths;
 use std::path::{Path, PathBuf};
 
-const ENTRIES: [&str; 8] = ["external", "internal", "launcher.sh", "update.sh", ".scripts", "lwlauncher", "launcher.conf", ".lwlauncher.new"];
-const MARKERS: [&str; 5] = ["external/run.sh", "external/version.txt", "launcher.sh", "update.sh", "lwlauncher"];
+const ENTRIES: [&str; 9] = ["external", "cs2", "internal", "launcher.sh", "update.sh", ".scripts", "lwlauncher", "launcher.conf", ".lwlauncher.new"];
+const MARKERS: [&str; 6] = ["external/run.sh", "external/version.txt", "cs2/run.sh", "launcher.sh", "update.sh", "lwlauncher"];
 
 pub struct Plan {
     pub install: PathBuf,
