@@ -1,6 +1,6 @@
 [package]
 name = "lwlauncher"
-version = "1.0.5"
+version = "1.0.6"
 edition = "2024"
 rust-version = "1.85"
 description = "LinusWare launcher"
@@ -16,7 +16,7 @@ ab_glyph = "0.2.32"
 ttf-parser = { version = "0.25", default-features = false, features = ["std", "opentype-layout"] }
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 tar = { version = "0.4", default-features = false }
-md-5 = "0.10"
+minisign-verify = "0.3"
 
 [build-dependencies]
 resvg = { version = "0.45", default-features = false }

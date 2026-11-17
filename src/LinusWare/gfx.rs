@@ -1,17 +1,18 @@
+use crate::LinusWare;
 use ab_glyph::{Font as _, FontRef, PxScale, ScaleFont, point};
 use glow::HasContext;
 use std::collections::HashMap;
 use std::io::Read;
 
-const BOLD: &[u8] = include_bytes!("../assets/fonts/NotoSans-Bold.ttf");
-const MEDIUM: &[u8] = include_bytes!("../assets/fonts/NotoSans-Medium.ttf");
-const ICONS: &[u8] = include_bytes!("../assets/fonts/Icons.ttf");
+const BOLD: &[u8] = include_bytes!("../../assets/fonts/NotoSans-Bold.ttf");
+const MEDIUM: &[u8] = include_bytes!("../../assets/fonts/NotoSans-Medium.ttf");
+const ICONS: &[u8] = include_bytes!("../../assets/fonts/Icons.ttf");
 const LOGO_Z: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/logo.z"));
 pub const LOGO_SIZE: usize = 256;
 const COVER_W: usize = 424;
 const COVER_H: usize = 636;
-const COVER_ROBLOX: &[u8] = include_bytes!("../assets/cover_roblox.rgba");
-const COVER_CS2: &[u8] = include_bytes!("../assets/cover_cs2.rgba");
+const COVER_ROBLOX: &[u8] = include_bytes!("../../assets/cover_roblox.rgba");
+const COVER_CS2: &[u8] = include_bytes!("../../assets/cover_cs2.rgba");
 const ATLAS: usize = 1024;
 
 // COLOR
@@ -20,17 +21,17 @@ pub struct Rgba(pub f32, pub f32, pub f32, pub f32);
 
 impl Rgba {
     pub const NONE: Rgba = Rgba(0.0, 0.0, 0.0, 0.0);
-    pub const fn hex(v: u32) -> Rgba {
+    pub const fn Hex(v: u32) -> Rgba {
         Rgba(((v >> 16) & 255) as f32 / 255.0, ((v >> 8) & 255) as f32 / 255.0, (v & 255) as f32 / 255.0, 1.0)
     }
-    pub fn a(self, a: f32) -> Rgba {
+    pub fn A(self, a: f32) -> Rgba {
         Rgba(self.0, self.1, self.2, self.3 * a.clamp(0.0, 1.0))
     }
-    pub fn mix(self, o: Rgba, t: f32) -> Rgba {
+    pub fn Mix(self, o: Rgba, t: f32) -> Rgba {
         let t = t.clamp(0.0, 1.0);
         Rgba(self.0 + (o.0 - self.0) * t, self.1 + (o.1 - self.1) * t, self.2 + (o.2 - self.2) * t, self.3 + (o.3 - self.3) * t)
     }
-    fn pm(self) -> [f32; 4] {
+    fn Pm(self) -> [f32; 4] {
         [self.0 * self.3, self.1 * self.3, self.2 * self.3, self.3]
     }
 }
@@ -107,7 +108,7 @@ pub struct Text {
 }
 
 impl Text {
-    fn new(scale: f32) -> Text {
+    fn New(scale: f32) -> Text {
         Text {
             fonts: [FontRef::try_from_slice(BOLD).unwrap(), FontRef::try_from_slice(MEDIUM).unwrap(), FontRef::try_from_slice(ICONS).unwrap()],
             faces: [ttf_parser::Face::parse(BOLD, 0).unwrap(), ttf_parser::Face::parse(MEDIUM, 0).unwrap()],
@@ -120,11 +121,11 @@ impl Text {
         }
     }
 
-    fn font(&self, f: Font) -> &FontRef<'static> {
+    fn Font(&self, f: Font) -> &FontRef<'static> {
         &self.fonts[f as usize]
     }
 
-    fn kerning(&mut self, f: Font, a: ab_glyph::GlyphId, b: ab_glyph::GlyphId) -> f32 {
+    fn Kerning(&mut self, f: Font, a: ab_glyph::GlyphId, b: ab_glyph::GlyphId) -> f32 {
         if f == Font::Icon {
             return 0.0;
         }
@@ -132,12 +133,12 @@ impl Text {
         if let Some(v) = self.kern.get(&key) {
             return *v;
         }
-        let v = gpos_kern(&self.faces[f as usize], ttf_parser::GlyphId(a.0), ttf_parser::GlyphId(b.0)) as f32 / 1000.0;
+        let v = LinusWare::gfx::GposKern(&self.faces[f as usize], ttf_parser::GlyphId(a.0), ttf_parser::GlyphId(b.0)) as f32 / 1000.0;
         self.kern.insert(key, v);
         v
     }
 
-    pub fn measure(&mut self, f: Font, size: f32, s: &str) -> f32 {
+    pub fn Measure(&mut self, f: Font, size: f32, s: &str) -> f32 {
         let px = size * self.scale;
         let font = self.fonts[f as usize].clone();
         let sf = font.as_scaled(PxScale::from(px));
@@ -146,7 +147,7 @@ impl Text {
         for c in s.chars() {
             let id = font.glyph_id(c);
             if let Some(p) = prev {
-                w += self.kerning(f, p, id) * px;
+                w += self.Kerning(f, p, id) * px;
             }
             w += sf.h_advance(id);
             prev = Some(id);
@@ -154,28 +155,28 @@ impl Text {
         w / self.scale
     }
 
-    pub fn ellipsize(&mut self, f: Font, size: f32, s: &str, max: f32) -> String {
-        if self.measure(f, size, s) <= max {
+    pub fn Ellipsize(&mut self, f: Font, size: f32, s: &str, max: f32) -> String {
+        if self.Measure(f, size, s) <= max {
             return s.to_string();
         }
         let mut chars: Vec<char> = s.chars().collect();
         while !chars.is_empty() {
             chars.pop();
             let t: String = chars.iter().collect::<String>() + "\u{2026}";
-            if self.measure(f, size, &t) <= max {
+            if self.Measure(f, size, &t) <= max {
                 return t;
             }
         }
         String::new()
     }
 
-    pub fn wrap(&mut self, f: Font, size: f32, s: &str, max: f32) -> Vec<String> {
+    pub fn Wrap(&mut self, f: Font, size: f32, s: &str, max: f32) -> Vec<String> {
         let mut lines = Vec::new();
         for para in s.split('\n') {
             let mut cur = String::new();
             for word in para.split_whitespace() {
                 let next = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
-                if !cur.is_empty() && self.measure(f, size, &next) > max {
+                if !cur.is_empty() && self.Measure(f, size, &next) > max {
                     lines.push(std::mem::take(&mut cur));
                     cur = word.to_string();
                 } else {
@@ -187,7 +188,7 @@ impl Text {
         lines
     }
 
-    fn glyph(&mut self, f: Font, c: char, px: f32, sub: u8) -> Option<Glyph> {
+    fn Glyph(&mut self, f: Font, c: char, px: f32, sub: u8) -> Option<Glyph> {
         let key = (f, c, (px * 16.0) as u32, sub);
         if let Some(g) = self.cache.get(&key) {
             return *g;
@@ -231,11 +232,11 @@ impl Text {
         g
     }
 
-    pub fn mask(&mut self, f: Font, size: f32, s: &str, pad: usize) -> Mask {
+    pub fn Mask(&mut self, f: Font, size: f32, s: &str, pad: usize) -> Mask {
         let px = size * self.scale;
         let font = self.fonts[f as usize].clone();
         let sf = font.as_scaled(PxScale::from(px));
-        let w = (self.measure(f, size, s) * self.scale).ceil() as usize + pad * 2;
+        let w = (self.Measure(f, size, s) * self.scale).ceil() as usize + pad * 2;
         let h = (sf.ascent() - sf.descent()).ceil() as usize + pad * 2;
         let mut data = vec![0u8; w * h];
         let mut pen = pad as f32;
@@ -244,7 +245,7 @@ impl Text {
         for c in s.chars() {
             let id = font.glyph_id(c);
             if let Some(p) = prev {
-                pen += self.kerning(f, p, id) * px;
+                pen += self.Kerning(f, p, id) * px;
             }
             if let Some(og) = font.outline_glyph(id.with_scale_and_position(PxScale::from(px), point(pen, base))) {
                 let b = og.px_bounds();
@@ -262,12 +263,12 @@ impl Text {
         Mask { w, h, data }
     }
 
-    pub fn ascent(&self, f: Font, size: f32) -> f32 {
-        self.font(f).as_scaled(PxScale::from(size)).ascent()
+    pub fn Ascent(&self, f: Font, size: f32) -> f32 {
+        self.Font(f).as_scaled(PxScale::from(size)).ascent()
     }
 }
 
-fn gpos_kern(face: &ttf_parser::Face, a: ttf_parser::GlyphId, b: ttf_parser::GlyphId) -> i16 {
+fn GposKern(face: &ttf_parser::Face, a: ttf_parser::GlyphId, b: ttf_parser::GlyphId) -> i16 {
     use ttf_parser::gpos::{PairAdjustment, PositioningSubtable};
     let Some(gpos) = face.tables().gpos else { return 0 };
     let mut total = 0;
@@ -289,7 +290,7 @@ fn gpos_kern(face: &ttf_parser::Face, a: ttf_parser::GlyphId, b: ttf_parser::Gly
     total
 }
 
-pub fn blur(m: &mut Mask, radius: usize) {
+pub fn Blur(m: &mut Mask, radius: usize) {
     if radius == 0 {
         return;
     }
@@ -335,7 +336,7 @@ pub fn blur(m: &mut Mask, radius: usize) {
     }
 }
 
-pub fn logo_rgba() -> Vec<u8> {
+pub fn LogoRgba() -> Vec<u8> {
     let mut out = Vec::with_capacity(LOGO_SIZE * LOGO_SIZE * 4);
     flate2::read::ZlibDecoder::new(LOGO_Z).read_to_end(&mut out).expect("logo");
     out
@@ -358,10 +359,9 @@ pub struct Gfx {
     pub ox: f32,
     pub oy: f32,
     pub clip: Option<[f32; 4]>,
-    pub res: (f32, f32),
 }
 
-unsafe fn compile(gl: &glow::Context, header: &str, vs: &str, fs: &str) -> Result<glow::Program, String> {
+unsafe fn Compile(gl: &glow::Context, header: &str, vs: &str, fs: &str) -> Result<glow::Program, String> {
     unsafe {
         let p = gl.create_program()?;
         for (kind, src) in [(glow::VERTEX_SHADER, vs), (glow::FRAGMENT_SHADER, fs)] {
@@ -383,7 +383,7 @@ unsafe fn compile(gl: &glow::Context, header: &str, vs: &str, fs: &str) -> Resul
 
 const FULLSCREEN_VS: &str = "void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
 
-unsafe fn texture(gl: &glow::Context, filter: u32) -> glow::Texture {
+unsafe fn Texture(gl: &glow::Context, filter: u32) -> glow::Texture {
     unsafe {
         let t = gl.create_texture().unwrap();
         gl.bind_texture(glow::TEXTURE_2D, Some(t));
@@ -396,11 +396,11 @@ unsafe fn texture(gl: &glow::Context, filter: u32) -> glow::Texture {
 }
 
 impl Gfx {
-    pub fn new(gl: glow::Context, gles: bool, scale: f32) -> Result<Gfx, String> {
+    pub fn New(gl: glow::Context, gles: bool, scale: f32) -> Result<Gfx, String> {
         let header = if gles { "#version 300 es\nprecision highp float;\nprecision highp int;\n" } else { "#version 330 core\n" };
         unsafe {
-            let bg = compile(&gl, header, FULLSCREEN_VS, include_str!("shaders/bg.frag"))?;
-            let ui = compile(&gl, header, include_str!("shaders/ui.vert"), include_str!("shaders/ui.frag"))?;
+            let bg = LinusWare::gfx::Compile(&gl, header, FULLSCREEN_VS, include_str!("shaders/bg.frag"))?;
+            let ui = LinusWare::gfx::Compile(&gl, header, include_str!("shaders/ui.vert"), include_str!("shaders/ui.frag"))?;
             let vao = gl.create_vertex_array()?;
             let vbo = gl.create_buffer()?;
             gl.bind_vertex_array(Some(vao));
@@ -412,35 +412,35 @@ impl Gfx {
                 gl.vertex_attrib_divisor(i, 1);
             }
             gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
-            let atlas = texture(&gl, glow::LINEAR);
+            let atlas = LinusWare::gfx::Texture(&gl, glow::LINEAR);
             gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::R8 as i32, ATLAS as i32, ATLAS as i32, 0, glow::RED, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(None));
-            let logo = texture(&gl, glow::LINEAR_MIPMAP_LINEAR);
-            let px = logo_rgba();
+            let logo = LinusWare::gfx::Texture(&gl, glow::LINEAR_MIPMAP_LINEAR);
+            let px = LinusWare::gfx::LogoRgba();
             let n = LOGO_SIZE as i32;
             gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, n, n, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&px)));
             gl.generate_mipmap(glow::TEXTURE_2D);
             let cover = [COVER_ROBLOX, COVER_CS2].map(|data| {
-                let t = texture(&gl, glow::LINEAR_MIPMAP_LINEAR);
+                let t = LinusWare::gfx::Texture(&gl, glow::LINEAR_MIPMAP_LINEAR);
                 gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, COVER_W as i32, COVER_H as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(data)));
                 gl.generate_mipmap(glow::TEXTURE_2D);
                 t
             });
-            let fx = texture(&gl, glow::LINEAR);
+            let fx = LinusWare::gfx::Texture(&gl, glow::LINEAR);
             gl.use_program(Some(ui));
             for (name, unit) in [("u_atlas", 0), ("u_image", 1), ("u_fx", 2), ("u_cover0", 3), ("u_cover1", 4)] {
                 gl.uniform_1_i32(gl.get_uniform_location(ui, name).as_ref(), unit);
             }
-            Ok(Gfx { gl, bg, ui, vao, vbo, atlas, logo, cover, fx, fx_size: (1, 1), text: Text::new(scale), insts: Vec::with_capacity(256), res: (1.0, 1.0), ox: 0.0, oy: 0.0, clip: None })
+            Ok(Gfx { gl, bg, ui, vao, vbo, atlas, logo, cover, fx, fx_size: (1, 1), text: LinusWare::gfx::Text::New(scale), insts: Vec::with_capacity(256), ox: 0.0, oy: 0.0, clip: None })
         }
     }
 
-    pub fn set_scale(&mut self, scale: f32) {
+    pub fn SetScale(&mut self, scale: f32) {
         if (self.text.scale - scale).abs() > 1e-3 {
-            self.text = Text::new(scale);
+            self.text = LinusWare::gfx::Text::New(scale);
         }
     }
 
-    pub fn upload_fx(&mut self, m: &Mask) {
+    pub fn UploadFx(&mut self, m: &Mask) {
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(self.fx));
             self.gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::R8 as i32, m.w as i32, m.h as i32, 0, glow::RED, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&m.data)));
@@ -448,7 +448,7 @@ impl Gfx {
         self.fx_size = (m.w, m.h);
     }
 
-    fn push(&mut self, mut i: Inst) {
+    fn Push(&mut self, mut i: Inst) {
         if let Some([x, y, w, h]) = self.clip {
             let s = self.text.scale;
             i.clip = [(x + self.ox) * s, (y + self.oy) * s, (x + w + self.ox) * s, (y + h + self.oy) * s];
@@ -456,25 +456,25 @@ impl Gfx {
         self.insts.push(i);
     }
 
-    fn s(&self) -> f32 {
+    fn S(&self) -> f32 {
         self.text.scale
     }
 
     // DRAW
-    pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, st: BoxStyle) {
-        let s = self.s();
+    pub fn Rect(&mut self, x: f32, y: f32, w: f32, h: f32, st: BoxStyle) {
+        let s = self.S();
         let x = x + self.ox;
         let y = y + self.oy;
         let mut i = Inst { rect: [x * s, y * s, w * s, h * s], ..Default::default() };
-        i.fill = st.fill.unwrap_or(Rgba::NONE).pm();
+        i.fill = st.fill.unwrap_or(Rgba::NONE).Pm();
         if let Some((c, bw)) = st.border {
-            i.border = c.pm();
+            i.border = c.Pm();
             i.p0[1] = bw * s;
         }
         i.p0[0] = (st.radius * s).min(w.min(h) * s * 0.5);
         if let Some((c, r)) = st.glow {
             if c.3 > 0.003 {
-                i.glow = c.pm();
+                i.glow = c.Pm();
                 i.p0[2] = r * s;
             }
         }
@@ -483,91 +483,91 @@ impl Gfx {
         }
         if let Some((p, c, phase)) = st.progress {
             i.p1[1] = p.max(0.0001);
-            i.extra = c.pm();
+            i.extra = c.Pm();
             i.p1[2] = phase;
         }
         if let Some((rx, ry, rr, ra)) = st.ripple {
             i.p2 = [rx * s, ry * s, rr * s, ra];
         }
-        self.push(i);
+        self.Push(i);
     }
 
-    pub fn fill(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, c: Rgba) {
-        self.rect(x, y, w, h, BoxStyle { fill: Some(c), radius, ..Default::default() });
+    pub fn Fill(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, c: Rgba) {
+        self.Rect(x, y, w, h, BoxStyle { fill: Some(c), radius, ..Default::default() });
     }
 
-    pub fn spinner(&mut self, cx: f32, cy: f32, r: f32, thick: f32, c: Rgba, rot: f32) {
-        let s = self.s();
+    pub fn Spinner(&mut self, cx: f32, cy: f32, r: f32, thick: f32, c: Rgba, rot: f32) {
+        let s = self.S();
         let cx = cx + self.ox;
         let cy = cy + self.oy;
         let mut i = Inst { rect: [(cx - r) * s, (cy - r) * s, 2.0 * r * s, 2.0 * r * s], ..Default::default() };
-        i.fill = c.pm();
+        i.fill = c.Pm();
         i.p0 = [0.0, thick * s, 0.0, 4.0];
         i.p1 = [rot, 4.4, 0.0, 0.0];
-        self.push(i);
+        self.Push(i);
     }
 
-    pub fn image(&mut self, x: f32, y: f32, w: f32, h: f32, alpha: f32) {
-        let s = self.s();
+    pub fn Image(&mut self, x: f32, y: f32, w: f32, h: f32, alpha: f32) {
+        let s = self.S();
         let x = x + self.ox;
         let y = y + self.oy;
         let mut i = Inst { rect: [x * s, y * s, w * s, h * s], uv: [0.0, 0.0, 1.0, 1.0], ..Default::default() };
         i.fill = [alpha, alpha, alpha, alpha];
         i.p0[3] = 2.0;
-        self.push(i);
+        self.Push(i);
     }
 
-    pub fn cover(&mut self, slot: usize, x: f32, y: f32, w: f32, h: f32, radius: f32, alpha: f32) {
-        let s = self.s();
+    pub fn Cover(&mut self, slot: usize, x: f32, y: f32, w: f32, h: f32, radius: f32, alpha: f32) {
+        let s = self.S();
         let x = x + self.ox;
         let y = y + self.oy;
         let mut i = Inst { rect: [x * s, y * s, w * s, h * s], uv: [0.0, 0.0, 1.0, 1.0], ..Default::default() };
         i.fill = [alpha, alpha, alpha, alpha];
         i.p0[0] = (radius * s).min(w.min(h) * s * 0.5);
         i.p0[3] = 5.0 + slot as f32;
-        self.push(i);
+        self.Push(i);
     }
 
-    pub fn fx(&mut self, x: f32, y: f32, uv: [f32; 4], c: Rgba) {
-        let s = self.s();
+    pub fn Fx(&mut self, x: f32, y: f32, uv: [f32; 4], c: Rgba) {
+        let s = self.S();
         let x = x + self.ox;
         let y = y + self.oy;
         let (fw, fh) = (self.fx_size.0 as f32, self.fx_size.1 as f32);
         let (w, h) = ((uv[2] - uv[0]) * fw, (uv[3] - uv[1]) * fh);
         let mut i = Inst { rect: [(x * s).round(), (y * s).round(), w, h], uv, ..Default::default() };
-        i.fill = c.pm();
+        i.fill = c.Pm();
         i.p0[3] = 3.0;
-        self.push(i);
+        self.Push(i);
     }
 
-    pub fn text(&mut self, f: Font, size: f32, s: &str, x: f32, base: f32, align: Align, c: Rgba) -> f32 {
+    pub fn Text(&mut self, f: Font, size: f32, s: &str, x: f32, base: f32, align: Align, c: Rgba) -> f32 {
         if c.3 <= 0.002 {
             return 0.0;
         }
-        let sc = self.s();
-        let w = self.text.measure(f, size, s);
+        let sc = self.S();
+        let w = self.text.Measure(f, size, s);
         let x0 = match align {
             Align::Left => x,
             Align::Center => x - w * 0.5,
         };
         let px = size * sc;
-        let font = self.text.font(f).clone();
+        let font = self.text.Font(f).clone();
         let sf = font.as_scaled(PxScale::from(px));
         let mut pen = (x0 + self.ox) * sc;
         let by = ((base + self.oy) * sc).round();
         let mut prev = None;
-        let fill = c.pm();
+        let fill = c.Pm();
         for ch in s.chars() {
             let id = font.glyph_id(ch);
             if let Some(p) = prev {
-                pen += self.text.kerning(f, p, id) * px;
+                pen += self.text.Kerning(f, p, id) * px;
             }
             let sub = ((pen.fract() * 4.0) as u8) & 3;
-            if let Some(g) = self.text.glyph(f, ch, px, sub) {
+            if let Some(g) = self.text.Glyph(f, ch, px, sub) {
                 let mut i = Inst { rect: [pen.floor() + g.off[0], by + g.off[1], g.size[0], g.size[1]], uv: g.uv, ..Default::default() };
                 i.fill = fill;
                 i.p0[3] = 1.0;
-                self.push(i);
+                self.Push(i);
             }
             pen += sf.h_advance(id);
             prev = Some(id);
@@ -575,7 +575,7 @@ impl Gfx {
         w
     }
 
-    pub fn render(&mut self, w: u32, h: u32, time: f32, mouse: (f32, f32), motion: f32, logo: [f32; 4]) {
+    pub fn Render(&mut self, w: u32, h: u32, time: f32, mouse: (f32, f32), motion: f32, logo: [f32; 4]) {
         let gl = &self.gl;
         let s = self.text.scale;
         unsafe {

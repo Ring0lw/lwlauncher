@@ -1,10 +1,11 @@
-use crate::askpass::{self, Bridge, Request};
-use crate::gfx::{Align, BoxStyle, Font, Gfx, Rgba, blur};
-use crate::install::{self, Outcome, Progress};
-use crate::launch;
-use crate::net::{self, Status};
-use crate::remove;
-use crate::{Config, Paths};
+use crate::LinusWare;
+use crate::LinusWare::askpass::{Bridge, Request};
+use crate::LinusWare::gfx::{Align, BoxStyle, Font, Gfx, Rgba};
+use crate::LinusWare::install::{self, Outcome, Progress};
+use crate::LinusWare::launch;
+use crate::LinusWare::net::Status;
+use crate::LinusWare::remove;
+use crate::LinusWare::{Config, Paths};
 use glutin::config::{ConfigTemplateBuilder, GlConfig};
 use glutin::context::{ContextApi, ContextAttributesBuilder, GlProfile, NotCurrentGlContext, PossiblyCurrentContext, Version};
 use glutin::display::{GetGlDisplay, GlDisplay};
@@ -24,40 +25,38 @@ use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::{CursorIcon, Icon, Window, WindowId};
 
 mod draw;
-use draw::window_icon;
 
 // PALETTE
-const BG: Rgba = Rgba::hex(0x050f08);
-const CIRCLE: Rgba = Rgba::hex(0x141e17);
-const CIRCLE_HI: Rgba = Rgba::hex(0x1c2c21);
-const MINT: Rgba = Rgba::hex(0x8cc8a0);
-const TITLE: Rgba = Rgba::hex(0xa8f0c8);
-const GREEN: Rgba = Rgba::hex(0x00cc66);
-const GREEN_HI: Rgba = Rgba::hex(0x19dd77);
-const GLOW: Rgba = Rgba::hex(0x22d36b);
-const DARK_TEXT: Rgba = Rgba::hex(0x0a1a0e);
-const BTN: Rgba = Rgba::hex(0x1a1a1a);
-const BTN_BORDER: Rgba = Rgba::hex(0x333333);
-const BTN_TEXT_OFF: Rgba = Rgba::hex(0x4a4a4a);
-const BTN_ON: Rgba = Rgba::hex(0x16221a);
-const BTN_ON_BORDER: Rgba = Rgba::hex(0x2e6e48);
-const BTN_ON_TEXT: Rgba = Rgba::hex(0xcdeedb);
-const RED: Rgba = Rgba::hex(0xe5484d);
-const DEL: Rgba = Rgba::hex(0x1d1617);
-const DEL_BORDER: Rgba = Rgba::hex(0x4a2b2d);
-const DEL_TEXT: Rgba = Rgba::hex(0xe8b4b6);
-const MUTED: Rgba = Rgba::hex(0x5d7d68);
-const BODY: Rgba = Rgba::hex(0xb9d9c5);
-const SUBTLE: Rgba = Rgba::hex(0x6f8f7a);
-const OK: Rgba = Rgba::hex(0x5fd38d);
-const WARN: Rgba = Rgba::hex(0xe5c07b);
-const ERR: Rgba = Rgba::hex(0xff7b72);
-const WHITE: Rgba = Rgba::hex(0xeef5f0);
+const BG: Rgba = LinusWare::gfx::Rgba::Hex(0x050f08);
+const CIRCLE: Rgba = LinusWare::gfx::Rgba::Hex(0x141e17);
+const CIRCLE_HI: Rgba = LinusWare::gfx::Rgba::Hex(0x1c2c21);
+const MINT: Rgba = LinusWare::gfx::Rgba::Hex(0x8cc8a0);
+const TITLE: Rgba = LinusWare::gfx::Rgba::Hex(0xa8f0c8);
+const GREEN: Rgba = LinusWare::gfx::Rgba::Hex(0x00cc66);
+const GREEN_HI: Rgba = LinusWare::gfx::Rgba::Hex(0x19dd77);
+const GLOW: Rgba = LinusWare::gfx::Rgba::Hex(0x22d36b);
+const DARK_TEXT: Rgba = LinusWare::gfx::Rgba::Hex(0x0a1a0e);
+const BTN: Rgba = LinusWare::gfx::Rgba::Hex(0x1a1a1a);
+const BTN_BORDER: Rgba = LinusWare::gfx::Rgba::Hex(0x333333);
+const BTN_TEXT_OFF: Rgba = LinusWare::gfx::Rgba::Hex(0x4a4a4a);
+const BTN_ON: Rgba = LinusWare::gfx::Rgba::Hex(0x16221a);
+const BTN_ON_BORDER: Rgba = LinusWare::gfx::Rgba::Hex(0x2e6e48);
+const BTN_ON_TEXT: Rgba = LinusWare::gfx::Rgba::Hex(0xcdeedb);
+const RED: Rgba = LinusWare::gfx::Rgba::Hex(0xe5484d);
+const DEL: Rgba = LinusWare::gfx::Rgba::Hex(0x1d1617);
+const DEL_BORDER: Rgba = LinusWare::gfx::Rgba::Hex(0x4a2b2d);
+const DEL_TEXT: Rgba = LinusWare::gfx::Rgba::Hex(0xe8b4b6);
+const MUTED: Rgba = LinusWare::gfx::Rgba::Hex(0x5d7d68);
+const BODY: Rgba = LinusWare::gfx::Rgba::Hex(0xb9d9c5);
+const SUBTLE: Rgba = LinusWare::gfx::Rgba::Hex(0x6f8f7a);
+const OK: Rgba = LinusWare::gfx::Rgba::Hex(0x5fd38d);
+const WARN: Rgba = LinusWare::gfx::Rgba::Hex(0xe5c07b);
+const ERR: Rgba = LinusWare::gfx::Rgba::Hex(0xff7b72);
+const WHITE: Rgba = LinusWare::gfx::Rgba::Hex(0xeef5f0);
 
 const ICON_GEAR: &str = "\u{f013}";
 const ICON_HELP: &str = "\u{f128}";
 const ICON_X: &str = "\u{f00d}";
-const ICON_CHECK: &str = "\u{f058}";
 const ICON_LOCK: &str = "\u{f023}";
 
 const W: f32 = 600.0;
@@ -125,25 +124,25 @@ pub enum Game {
 
 impl Game {
     pub const ALL: [Game; 2] = [Game::Roblox, Game::Cs2];
-    pub fn ed(self) -> &'static str {
+    pub fn Ed(self) -> &'static str {
         match self {
             Game::Roblox => "external",
             Game::Cs2 => "cs2",
         }
     }
-    pub fn name(self) -> &'static str {
+    pub fn Name(self) -> &'static str {
         match self {
             Game::Roblox => "Roblox",
             Game::Cs2 => "CS2",
         }
     }
-    pub fn slot(self) -> usize {
+    pub fn Slot(self) -> usize {
         match self {
             Game::Roblox => 0,
             Game::Cs2 => 1,
         }
     }
-    fn id(self) -> Id {
+    fn Id(self) -> Id {
         match self {
             Game::Roblox => Id::GameRoblox,
             Game::Cs2 => Id::GameCs2,
@@ -246,21 +245,21 @@ unsafe extern "C" {
     fn malloc_trim(pad: usize) -> i32;
 }
 
-fn ease(cur: &mut f32, target: f32, dt: f32, speed: f32) {
+fn Ease(cur: &mut f32, target: f32, dt: f32, speed: f32) {
     *cur += (target - *cur) * (1.0 - (-dt * speed).exp());
 }
 
-fn inside(r: [f32; 4], p: (f32, f32)) -> bool {
+fn Inside(r: [f32; 4], p: (f32, f32)) -> bool {
     p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3]
 }
 
-pub fn run(paths: Paths, mode: Mode) -> Result<i32, String> {
+pub fn Run(paths: Paths, mode: Mode) -> Result<i32, String> {
     if std::env::var_os("DISPLAY").is_none() && std::env::var_os("WAYLAND_DISPLAY").is_none() {
         return Err("no DISPLAY or WAYLAND_DISPLAY".into());
     }
     let el = EventLoop::<Msg>::with_user_event().build().map_err(|e| e.to_string())?;
     let proxy = el.create_proxy();
-    let cfg = Config::load(&paths);
+    let cfg = LinusWare::Config::Load(&paths);
     let now = Instant::now();
     let mut app = App {
         paths,
@@ -323,17 +322,17 @@ pub fn run(paths: Paths, mode: Mode) -> Result<i32, String> {
 }
 
 impl App {
-    fn size(&self) -> (f32, f32) {
+    fn Size(&self) -> (f32, f32) {
         match self.mode {
             Mode::Launcher => (W, H),
             Mode::Askpass(_) => (ASK_W, ASK_H),
         }
     }
 
-    fn create(&mut self, el: &ActiveEventLoop) -> Result<(), String> {
+    fn Create(&mut self, el: &ActiveEventLoop) -> Result<(), String> {
         use winit::platform::wayland::WindowAttributesExtWayland;
         use winit::platform::x11::{WindowAttributesExtX11, WindowType};
-        let (w, h) = self.size();
+        let (w, h) = self.Size();
         let mut attrs = Window::default_attributes()
             .with_title("LinusWare")
             .with_inner_size(LogicalSize::new(w as f64, h as f64))
@@ -342,7 +341,7 @@ impl App {
             .with_resizable(false)
             .with_decorations(true)
             .with_visible(false)
-            .with_window_icon(window_icon());
+            .with_window_icon(LinusWare::app::draw::WindowIcon());
         attrs = WindowAttributesExtX11::with_name(attrs, "linusware", "linusware");
         attrs = WindowAttributesExtX11::with_x11_window_type(attrs, vec![WindowType::Dialog]);
         attrs = WindowAttributesExtWayland::with_name(attrs, "linusware", "linusware");
@@ -373,25 +372,25 @@ impl App {
             glow::Context::from_loader_function_cstr(|s| display.get_proc_address(s))
         };
         let scale = window.scale_factor() as f32;
-        let mut gfx = Gfx::new(glc, gles, scale)?;
+        let mut gfx = LinusWare::gfx::Gfx::New(glc, gles, scale)?;
         gfx.oy = -TOP;
         self.gl = Some(Gl { window, surface, ctx, gfx, title_glow: [0.0; 4], logo_glow: [0.0; 4], glow_pad: (0.0, 0.0) });
-        self.build_glow();
+        self.BuildGlow();
         Ok(())
     }
 
-    fn build_glow(&mut self) {
+    fn BuildGlow(&mut self) {
         let Some(g) = self.gl.as_mut() else { return };
         let s = g.gfx.text.scale;
         let pad = (16.0 * s).ceil() as usize;
-        let mut title = g.gfx.text.mask(Font::Bold, 34.0, "LinusWare", pad);
-        blur(&mut title, (6.0 * s).round() as usize);
+        let mut title = g.gfx.text.Mask(Font::Bold, 34.0, "LinusWare", pad);
+        LinusWare::gfx::Blur(&mut title, (6.0 * s).round() as usize);
         let logo_px = (100.0 * s).round() as usize;
         let lpad = (22.0 * s).ceil() as usize;
-        let src = crate::gfx::logo_rgba();
-        let n = crate::gfx::LOGO_SIZE;
+        let src = LinusWare::gfx::LogoRgba();
+        let n = crate::LinusWare::gfx::LOGO_SIZE;
         let lw = logo_px + lpad * 2;
-        let mut logo = crate::gfx::Mask { w: lw, h: lw, data: vec![0; lw * lw] };
+        let mut logo = crate::LinusWare::gfx::Mask { w: lw, h: lw, data: vec![0; lw * lw] };
         for y in 0..logo_px {
             for x in 0..logo_px {
                 let sx = x * n / logo_px;
@@ -399,88 +398,88 @@ impl App {
                 logo.data[(y + lpad) * lw + x + lpad] = src[(sy * n + sx) * 4 + 3];
             }
         }
-        blur(&mut logo, (9.0 * s).round() as usize);
+        LinusWare::gfx::Blur(&mut logo, (9.0 * s).round() as usize);
         let fw = title.w + logo.w;
         let fh = title.h.max(logo.h);
-        let mut fx = crate::gfx::Mask { w: fw, h: fh, data: vec![0; fw * fh] };
+        let mut fx = crate::LinusWare::gfx::Mask { w: fw, h: fh, data: vec![0; fw * fh] };
         for y in 0..title.h {
             fx.data[y * fw..y * fw + title.w].copy_from_slice(&title.data[y * title.w..(y + 1) * title.w]);
         }
         for y in 0..logo.h {
             fx.data[y * fw + title.w..y * fw + title.w + logo.w].copy_from_slice(&logo.data[y * logo.w..(y + 1) * logo.w]);
         }
-        g.gfx.upload_fx(&fx);
+        g.gfx.UploadFx(&fx);
         let (fwf, fhf) = (fw as f32, fh as f32);
         g.title_glow = [0.0, 0.0, title.w as f32 / fwf, title.h as f32 / fhf];
         g.logo_glow = [title.w as f32 / fwf, 0.0, 1.0, logo.h as f32 / fhf];
         g.glow_pad = (pad as f32 / s, lpad as f32 / s);
     }
 
-    fn installed(&self) -> bool {
-        self.paths.installed()
+    fn Installed(&self) -> bool {
+        self.paths.Installed()
     }
 
-    fn busy(&self) -> bool {
+    fn Busy(&self) -> bool {
         self.job != Job::Idle
     }
 
-    fn note(&mut self, s: impl Into<String>, c: Rgba) {
+    fn Note(&mut self, s: impl Into<String>, c: Rgba) {
         self.changelog = false;
         self.tone = Some((Tone(s.into(), c), Instant::now()));
     }
 
     // JOBS
-    fn start_check(&mut self) {
-        if !net::have_curl() {
-            self.note("curl is missing, install it to download LinusWare", ERR);
+    fn StartCheck(&mut self) {
+        if !LinusWare::net::HaveCurl() {
+            self.Note("curl is missing, install it to download LinusWare", ERR);
             return;
         }
-        if self.cfg.auto_update && self.installed() {
-            self.start_update();
+        if self.cfg.auto_update && self.Installed() {
+            self.StartUpdate();
             return;
         }
         self.job = Job::Checking;
         let (paths, proxy, pr, auto) = (self.paths.clone(), self.proxy.clone(), self.progress.clone(), self.cfg.auto_update);
         std::thread::spawn(move || {
-            let _ = proxy.send_event(Msg::Checked(install::status(&paths, &paths.ed)));
-            if auto && install::self_update(&paths, &pr).ok().flatten().is_some() {
+            let _ = proxy.send_event(Msg::Checked(LinusWare::install::GetStatus(&paths, &paths.ed)));
+            if auto && LinusWare::install::SelfUpdate(&paths, &pr).ok().flatten().is_some() {
                 let _ = proxy.send_event(Msg::SelfUpdated);
             }
         });
     }
 
-    fn start_update(&mut self) {
-        if self.busy() {
+    fn StartUpdate(&mut self) {
+        if self.Busy() {
             return;
         }
-        if !net::have_curl() {
-            self.note("curl is missing, install it to download LinusWare", ERR);
+        if !LinusWare::net::HaveCurl() {
+            self.Note("curl is missing, install it to download LinusWare", ERR);
             return;
         }
         self.job = Job::Updating;
         self.tone = None;
-        self.progress.set(install::PH_IDLE);
+        self.progress.Set(install::PH_IDLE);
         let (paths, proxy, pr) = (self.paths.clone(), self.proxy.clone(), self.progress.clone());
-        let fresh = !self.installed();
+        let fresh = !self.Installed();
         std::thread::spawn(move || {
-            let r = install::update_edition(&paths, &pr, fresh);
-            install::refresh_scripts(&paths, |_| {});
-            pr.set(install::PH_LAUNCHER);
-            let me = install::self_update(&paths, &pr).unwrap_or(None);
-            pr.set(install::PH_IDLE);
-            if paths.exe_installed() {
-                let _ = install::write_desktop_entry(&paths);
+            let r = LinusWare::install::UpdateEdition(&paths, &pr, fresh);
+            LinusWare::install::RefreshScripts(&paths, |_| {});
+            pr.Set(install::PH_LAUNCHER);
+            let me = LinusWare::install::SelfUpdate(&paths, &pr).unwrap_or(None);
+            pr.Set(install::PH_IDLE);
+            if paths.ExeInstalled() {
+                let _ = LinusWare::install::WriteDesktopEntry(&paths);
             }
             let _ = proxy.send_event(Msg::Updated(r, me));
         });
     }
 
-    fn ensure_bridge(&mut self) -> bool {
+    fn EnsureBridge(&mut self) -> bool {
         if self.bridge.is_some() {
             return true;
         }
         let proxy = self.proxy.clone();
-        match Bridge::start(move |r| {
+        match LinusWare::askpass::Bridge::Start(move |r| {
             let _ = proxy.send_event(Msg::Ask(r));
         }) {
             Ok(b) => {
@@ -488,86 +487,86 @@ impl App {
                 true
             }
             Err(e) => {
-                self.note(format!("Could not open the password prompt: {e}"), ERR);
+                self.Note(format!("Could not open the password prompt: {e}"), ERR);
                 false
             }
         }
     }
 
-    fn start_launch(&mut self) {
-        if self.busy() || !self.installed() || !self.ensure_bridge() {
+    fn StartLaunch(&mut self) {
+        if self.Busy() || !self.Installed() || !self.EnsureBridge() {
             return;
         }
         self.job = Job::Launching;
         self.ask_tries = 0;
-        self.note("Starting LinusWare\u{2026}", MUTED);
+        self.Note("Starting LinusWare\u{2026}", MUTED);
         let proxy = self.proxy.clone();
-        let r = launch::start(&self.paths, self.bridge.as_ref().unwrap(), move |e| {
+        let r = LinusWare::launch::Start(&self.paths, self.bridge.as_ref().unwrap(), move |e| {
             let _ = proxy.send_event(Msg::Launch(e));
         });
         if let Err(e) = r {
             self.job = Job::Idle;
-            self.note(format!("Could not run sudo: {e}"), ERR);
+            self.Note(format!("Could not run sudo: {e}"), ERR);
         }
     }
 
-    fn start_delete(&mut self) {
-        if self.busy() {
+    fn StartDelete(&mut self) {
+        if self.Busy() {
             return;
         }
-        let plan = match remove::plan(&self.paths) {
+        let plan = match LinusWare::remove::MakePlan(&self.paths) {
             Ok(p) => p,
             Err(e) => {
-                self.note(e, WARN);
+                self.Note(e, WARN);
                 return;
             }
         };
         self.job = Job::Deleting;
-        self.note("Deleting LinusWare\u{2026}", MUTED);
+        self.Note("Deleting LinusWare\u{2026}", MUTED);
         let proxy = self.proxy.clone();
         let plan2 = remove::Plan { install: plan.install.clone(), entries: plan.entries.clone(), extra: plan.extra.clone() };
         self.root_rm = Some(plan);
         std::thread::spawn(move || {
-            let r = remove::execute(&plan2);
+            let r = LinusWare::remove::Execute(&plan2);
             let _ = proxy.send_event(Msg::Deleted(Ok(r)));
         });
     }
 
-    fn finish_delete(&mut self) {
+    fn FinishDelete(&mut self) {
         if let Some(p) = self.root_rm.take() {
-            remove::finish(&p);
+            LinusWare::remove::Finish(&p);
         }
         self.job = Job::Idle;
         self.remote = None;
-        self.note("LinusWare removed", OK);
+        self.Note("LinusWare removed", OK);
     }
 
-    fn pick(&mut self, game: Game) {
+    fn Pick(&mut self, game: Game) {
         self.game = Some(game);
-        self.paths.ed = game.ed().to_string();
+        self.paths.ed = game.Ed().to_string();
         self.remote = None;
         self.tone = None;
         self.job = Job::Idle;
         self.intro = Instant::now();
-        self.set_panel(Panel::Main);
-        self.start_check();
+        self.SetPanel(Panel::Main);
+        self.StartCheck();
     }
 
-    fn to_pick(&mut self) {
+    fn ToPick(&mut self) {
         self.game = None;
         self.remote = None;
         self.tone = None;
         self.job = Job::Idle;
         self.ask = None;
         self.intro = Instant::now();
-        self.set_panel(Panel::Pick);
+        self.SetPanel(Panel::Pick);
     }
 
-    pub(super) fn gname(&self) -> &'static str {
-        self.game.map(|g| g.name()).unwrap_or("LinusWare")
+    pub(super) fn Gname(&self) -> &'static str {
+        self.game.map(|g| g.Name()).unwrap_or("LinusWare")
     }
 
-    fn set_panel(&mut self, p: Panel) {
+    fn SetPanel(&mut self, p: Panel) {
         if self.panel != p {
             self.prev_panel = self.panel;
             self.panel = p;
@@ -575,29 +574,29 @@ impl App {
         }
     }
 
-    fn asking(&self) -> bool {
+    fn Asking(&self) -> bool {
         self.ask.is_some() || matches!(self.mode, Mode::Askpass(_))
     }
 
-    fn submit_password(&mut self) {
+    fn SubmitPassword(&mut self) {
         if let Mode::Askpass(_) = self.mode {
             println!("{}", self.password);
             self.password.clear();
             self.code = 0;
-            self.quit();
+            self.Quit();
             return;
         }
         if let Some(req) = self.ask.take() {
             let _ = req.reply.send(Some(std::mem::take(&mut self.password)));
-            self.note("Checking password\u{2026}", MUTED);
+            self.Note("Checking password\u{2026}", MUTED);
         }
     }
 
-    fn cancel_password(&mut self) {
+    fn CancelPassword(&mut self) {
         self.password.clear();
         if let Mode::Askpass(_) = self.mode {
             self.code = 1;
-            self.quit();
+            self.Quit();
             return;
         }
         if let Some(req) = self.ask.take() {
@@ -605,69 +604,69 @@ impl App {
         }
     }
 
-    fn quit(&mut self) {
+    fn Quit(&mut self) {
         self.fade = Some(Instant::now() - Duration::from_secs(10));
     }
 
     // INPUT
-    fn hover_id(&self) -> Option<Id> {
-        self.hits.iter().rev().find(|h| inside(h.r, self.mouse)).map(|h| h.id)
+    fn HoverId(&self) -> Option<Id> {
+        self.hits.iter().rev().find(|h| LinusWare::app::Inside(h.r, self.mouse)).map(|h| h.id)
     }
 
-    fn enabled(&self, id: Id) -> bool {
+    fn Enabled(&self, id: Id) -> bool {
         self.hits.iter().any(|h| h.id == id && h.enabled)
     }
 
-    fn click(&mut self, id: Id) {
+    fn Click(&mut self, id: Id) {
         match id {
-            Id::GameRoblox => self.pick(Game::Roblox),
-            Id::GameCs2 => self.pick(Game::Cs2),
-            Id::Back => self.to_pick(),
-            Id::Gear => self.set_panel(if self.panel == Panel::Settings { Panel::Main } else { Panel::Settings }),
-            Id::Help => self.set_panel(if matches!(self.panel, Panel::Help | Panel::Changelog) { Panel::Main } else { Panel::Help }),
-            Id::External => self.start_launch(),
-            Id::Update => self.start_update(),
+            Id::GameRoblox => self.Pick(Game::Roblox),
+            Id::GameCs2 => self.Pick(Game::Cs2),
+            Id::Back => self.ToPick(),
+            Id::Gear => self.SetPanel(if self.panel == Panel::Settings { Panel::Main } else { Panel::Settings }),
+            Id::Help => self.SetPanel(if matches!(self.panel, Panel::Help | Panel::Changelog) { Panel::Main } else { Panel::Help }),
+            Id::External => self.StartLaunch(),
+            Id::Update => self.StartUpdate(),
             Id::TogAuto => {
                 self.cfg.auto_update = !self.cfg.auto_update;
-                self.cfg.save(&self.paths);
+                self.cfg.Save(&self.paths);
             }
             Id::TogClose => {
                 self.cfg.close_after_launch = !self.cfg.close_after_launch;
-                self.cfg.save(&self.paths);
+                self.cfg.Save(&self.paths);
             }
-            Id::OpenFolder => launch::open(&self.paths.install.display().to_string()),
-            Id::Discord => launch::open(DISCORD),
-            Id::Backup => launch::open(DISCORD_BACKUP),
+            Id::OpenFolder => LinusWare::launch::Open(&self.paths.install.display().to_string()),
+            Id::Discord => LinusWare::launch::Open(DISCORD),
+            Id::Backup => LinusWare::launch::Open(DISCORD_BACKUP),
             Id::Changelog => {
                 self.log_scroll = 0.0;
                 self.log_target = 0.0;
-                self.set_panel(Panel::Changelog);
+                self.SetPanel(Panel::Changelog);
             }
-            Id::OpenLog => launch::open(&launch::log_path(&self.paths).display().to_string()),
-            Id::PwOk => self.submit_password(),
-            Id::PwCancel => self.cancel_password(),
+            Id::OpenLog => LinusWare::launch::Open(&LinusWare::launch::LogPath(&self.paths).display().to_string()),
+            Id::PwOk => self.SubmitPassword(),
+            Id::PwCancel => self.CancelPassword(),
             Id::Delete | Id::Field => {}
         }
     }
 
-    fn key(&mut self, ev: &KeyEvent) {
+    fn Key(&mut self, ev: &KeyEvent) {
         if ev.state != ElementState::Pressed {
             return;
         }
-        let asking = self.asking();
+        let asking = self.Asking();
         match &ev.logical_key {
             Key::Named(NamedKey::Escape) => {
                 if asking {
-                    self.cancel_password();
+                    self.CancelPassword();
                 } else if self.panel != Panel::Main {
-                    self.set_panel(Panel::Main);
+                    self.SetPanel(Panel::Main);
                 }
             }
             Key::Named(NamedKey::Enter) => {
                 if asking {
-                    self.submit_password();
-                } else if self.panel == Panel::Main && self.installed() && !self.busy() {
-                    self.start_launch();
+                    self.SubmitPassword();
+                } else if self.panel == Panel::Main && self.Installed() && !self.Busy() {
+                    self.StartLaunch();
                 }
             }
             Key::Named(NamedKey::Backspace) if asking => {
@@ -687,17 +686,17 @@ impl App {
         }
     }
 
-    fn on_msg(&mut self, msg: Msg) {
+    fn OnMsg(&mut self, msg: Msg) {
         match msg {
             Msg::Checked(r) => {
                 self.job = Job::Idle;
                 self.remote = Some(r);
             }
-            Msg::SelfUpdated => install::restart(&self.paths),
+            Msg::SelfUpdated => LinusWare::install::Restart(&self.paths),
             Msg::Updated(r, me) => {
                 self.job = Job::Idle;
                 if me.is_some() {
-                    install::restart(&self.paths);
+                    LinusWare::install::Restart(&self.paths);
                 }
                 match r {
                     Ok(o) => {
@@ -708,7 +707,7 @@ impl App {
                             }
                             Outcome::Updated { to, log, .. } => {
                                 self.remote = Some(Ok(Status { version: to.clone(), updated: true, log: log.clone() }));
-                                self.note(format!("Updated to v{to}"), OK);
+                                self.Note(format!("Updated to v{to}"), OK);
                                 self.changelog = !log.is_empty();
                                 self.done_flash = Some(Instant::now());
                             }
@@ -717,7 +716,7 @@ impl App {
                             }
                         }
                     }
-                    Err(e) => self.note(format!("Update failed: {e}"), ERR),
+                    Err(e) => self.Note(format!("Update failed: {e}"), ERR),
                 }
             }
             Msg::Ask(req) => {
@@ -728,7 +727,7 @@ impl App {
                 self.password.clear();
                 self.caret_t = Instant::now();
                 self.ask = Some(req);
-                self.set_panel(Panel::Main);
+                self.SetPanel(Panel::Main);
                 if let Some(g) = &self.gl {
                     g.window.focus_window();
                 }
@@ -736,12 +735,12 @@ impl App {
             Msg::Launch(ev) => match ev {
                 launch::Event::Running => {
                     self.ask = None;
-                    self.note("LinusWare is running", OK);
+                    self.Note("LinusWare is running", OK);
                 }
                 launch::Event::Stable => {
                     self.job = Job::Idle;
                     self.launched = true;
-                    self.note("LinusWare is running", OK);
+                    self.Note("LinusWare is running", OK);
                     if self.cfg.close_after_launch {
                         self.fade = Some(Instant::now());
                     }
@@ -750,54 +749,54 @@ impl App {
                     self.job = Job::Idle;
                     self.ask = None;
                     if code == 0 {
-                        self.note("LinusWare closed", MUTED);
+                        self.Note("LinusWare closed", MUTED);
                     } else if code == launch::CANCELLED && tail.is_empty() {
-                        self.note("Cancelled", WARN);
+                        self.Note("Cancelled", WARN);
                     } else if tail.contains("Not authorized") {
-                        self.note("Wrong password", WARN);
+                        self.Note("Wrong password", WARN);
                     } else if self.ask_tries > 0 && (tail.contains("no password") || tail.contains("incorrect password") || tail.is_empty()) {
-                        self.note(if tail.contains("incorrect") { "Wrong password" } else { "Cancelled" }, WARN);
+                        self.Note(if tail.contains("incorrect") { "Wrong password" } else { "Cancelled" }, WARN);
                     } else {
-                        self.note(if tail.is_empty() { format!("LinusWare exited ({code})") } else { tail }, ERR);
+                        self.Note(if tail.is_empty() { format!("LinusWare exited ({code})") } else { tail }, ERR);
                     }
                 }
             },
             Msg::Deleted(r) => match r {
-                Ok(rep) if rep.failed.is_empty() => self.finish_delete(),
+                Ok(rep) if rep.failed.is_empty() => self.FinishDelete(),
                 Ok(rep) => {
-                    if !self.ensure_bridge() {
+                    if !self.EnsureBridge() {
                         self.job = Job::Idle;
                         return;
                     }
                     self.ask_tries = 0;
-                    self.note("Some files belong to root, enter your password", WARN);
+                    self.Note("Some files belong to root, enter your password", WARN);
                     let proxy = self.proxy.clone();
-                    let r = launch::sudo_rm(&self.paths, self.bridge.as_ref().unwrap(), &rep.failed, move |ok, t| {
+                    let r = LinusWare::launch::SudoRm(&self.paths, self.bridge.as_ref().unwrap(), &rep.failed, move |ok, t| {
                         let _ = proxy.send_event(Msg::RootRm(ok, t));
                     });
                     if let Err(e) = r {
                         self.job = Job::Idle;
-                        self.note(format!("Could not delete: {e}"), ERR);
+                        self.Note(format!("Could not delete: {e}"), ERR);
                     }
                 }
                 Err(e) => {
                     self.job = Job::Idle;
-                    self.note(e, ERR);
+                    self.Note(e, ERR);
                 }
             },
             Msg::RootRm(ok, tail) => {
                 self.ask = None;
                 if ok {
-                    self.finish_delete();
+                    self.FinishDelete();
                 } else {
                     self.job = Job::Idle;
-                    self.note(if tail.is_empty() { "Delete cancelled".into() } else { tail }, WARN);
+                    self.Note(if tail.is_empty() { "Delete cancelled".into() } else { tail }, WARN);
                 }
             }
         }
     }
 
-    fn remote_log(&self) -> String {
+    fn RemoteLog(&self) -> String {
         match &self.remote {
             Some(Ok(s)) => s.log.clone(),
             _ => String::new(),
@@ -805,7 +804,7 @@ impl App {
     }
 
     // FRAME
-    fn frame(&mut self) {
+    fn Frame(&mut self) {
         let now = Instant::now();
         let dt = (now - self.last).as_secs_f32().min(0.1);
         self.dt = dt;
@@ -815,36 +814,36 @@ impl App {
             if self.mouse_k < 0.02 {
                 self.mouse_s = self.mouse;
             }
-            ease(&mut self.mouse_s.0, self.mouse.0, dt, 13.0);
-            ease(&mut self.mouse_s.1, self.mouse.1, dt, 13.0);
+            LinusWare::app::Ease(&mut self.mouse_s.0, self.mouse.0, dt, 13.0);
+            LinusWare::app::Ease(&mut self.mouse_s.1, self.mouse.1, dt, 13.0);
         }
-        ease(&mut self.mouse_k, if self.mouse_in { 1.0 } else { 0.0 }, dt, 5.0);
+        LinusWare::app::Ease(&mut self.mouse_k, if self.mouse_in { 1.0 } else { 0.0 }, dt, 5.0);
         let motion = 1.0;
 
-        if self.pressed == Some(Id::Delete) && self.hover_id() == Some(Id::Delete) && self.enabled(Id::Delete) {
+        if self.pressed == Some(Id::Delete) && self.HoverId() == Some(Id::Delete) && self.Enabled(Id::Delete) {
             self.hold += dt / HOLD;
             if self.hold >= 1.0 {
                 self.hold = 0.0;
                 self.pressed = None;
-                self.start_delete();
+                self.StartDelete();
             }
         } else {
-            ease(&mut self.hold, 0.0, dt, 9.0);
+            LinusWare::app::Ease(&mut self.hold, 0.0, dt, 9.0);
         }
-        ease(&mut self.panel_t, 1.0, dt, 12.0);
-        ease(&mut self.ask_t, if self.ask.is_some() { 1.0 } else { 0.0 }, dt, 14.0);
+        LinusWare::app::Ease(&mut self.panel_t, 1.0, dt, 12.0);
+        LinusWare::app::Ease(&mut self.ask_t, if self.ask.is_some() { 1.0 } else { 0.0 }, dt, 14.0);
 
-        let hovered = self.hover_id();
+        let hovered = self.HoverId();
         let ids: Vec<Id> = self.hits.iter().map(|h| h.id).collect();
         for id in ids {
-            let en = self.enabled(id);
+            let en = self.Enabled(id);
             let a = self.anims.entry(id).or_default();
             if a.scale == 0.0 {
                 a.scale = 1.0;
             }
-            ease(&mut a.hover, if hovered == Some(id) && en { 1.0 } else { 0.0 }, dt, 14.0);
-            ease(&mut a.press, if self.pressed == Some(id) && hovered == Some(id) && en { 1.0 } else { 0.0 }, dt, 22.0);
-            ease(&mut a.on, if en { 1.0 } else { 0.0 }, dt, 8.0);
+            LinusWare::app::Ease(&mut a.hover, if hovered == Some(id) && en { 1.0 } else { 0.0 }, dt, 14.0);
+            LinusWare::app::Ease(&mut a.press, if self.pressed == Some(id) && hovered == Some(id) && en { 1.0 } else { 0.0 }, dt, 22.0);
+            LinusWare::app::Ease(&mut a.on, if en { 1.0 } else { 0.0 }, dt, 8.0);
             let target = 1.0 + 0.025 * a.hover - 0.05 * a.press;
             let acc = 420.0 * (target - a.scale) - 22.0 * a.vel;
             a.vel += acc * dt;
@@ -856,17 +855,17 @@ impl App {
         self.hits.clear();
         let Some(mut g) = self.gl.take() else { return };
         match self.mode {
-            Mode::Launcher => self.draw_launcher(&mut g, t, motion),
-            Mode::Askpass(_) => self.draw_askpass(&mut g, t),
+            Mode::Launcher => self.DrawLauncher(&mut g, t, motion),
+            Mode::Askpass(_) => self.DrawAskpass(&mut g, t),
         }
         if fade > 0.0 {
             g.gfx.ox = 0.0;
             g.gfx.oy = -TOP;
-            g.gfx.fill(0.0, TOP, W, H, 0.0, BG.a(fade));
+            g.gfx.Fill(0.0, TOP, W, H, 0.0, BG.A(fade));
         }
         let size = g.window.inner_size();
         let breath = 0.5 + 0.5 * (t * 1.3).sin() * motion;
-        g.gfx.render(size.width, size.height, t, mouse, self.mouse_k, [300.0, 107.0 + OY - TOP, 0.0, 0.7 + 0.3 * breath]);
+        g.gfx.Render(size.width, size.height, t, mouse, self.mouse_k, [300.0, 107.0 + OY - TOP, 0.0, 0.7 + 0.3 * breath]);
         g.window.pre_present_notify();
         let _ = g.surface.swap_buffers(&g.ctx);
         if !self.shown {

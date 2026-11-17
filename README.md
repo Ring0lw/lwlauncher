@@ -8,6 +8,12 @@ Replaces the [old whiptail launcher](https://git.catapis.uk/linusware/main/src/c
 cargo build --release
 ```
 
+## Release
+```sh
+./dist.sh
+```
+builds and signs it. needs `rsign` (`cargo install rsign2`) and the key in `~/.minisign/linusware.key`, public half is `assets/linusware.pub`. the launcher only takes updates signed with that key, so dont lose it
+
 ## Install(User)
 ```bash
 curl -fsSL https://linusware.org/install.sh | bash

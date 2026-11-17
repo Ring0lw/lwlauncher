@@ -1,3 +1,4 @@
+use crate::LinusWare;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,15 +13,15 @@ pub struct Status {
 }
 
 impl Status {
-    pub fn parse(s: &str) -> Option<Status> {
-        let version = json_str(s, "version")?;
-        let updated = json_bool(s, "updated").unwrap_or(false);
-        let log = json_str(s, "log").unwrap_or_default();
+    pub fn Parse(s: &str) -> Option<Status> {
+        let version = LinusWare::net::JsonStr(s, "version")?;
+        let updated = LinusWare::net::JsonBool(s, "updated").unwrap_or(false);
+        let log = LinusWare::net::JsonStr(s, "log").unwrap_or_default();
         Some(Status { version, updated, log })
     }
 }
 
-fn json_value<'a>(s: &'a str, key: &str) -> Option<&'a str> {
+fn JsonValue<'a>(s: &'a str, key: &str) -> Option<&'a str> {
     let pat = format!("\"{key}\"");
     let i = s.find(&pat)? + pat.len();
     let rest = s[i..].trim_start();
@@ -28,8 +29,8 @@ fn json_value<'a>(s: &'a str, key: &str) -> Option<&'a str> {
     Some(rest.trim_start())
 }
 
-fn json_bool(s: &str, key: &str) -> Option<bool> {
-    let v = json_value(s, key)?;
+fn JsonBool(s: &str, key: &str) -> Option<bool> {
+    let v = LinusWare::net::JsonValue(s, key)?;
     if v.starts_with("true") {
         Some(true)
     } else if v.starts_with("false") {
@@ -39,8 +40,8 @@ fn json_bool(s: &str, key: &str) -> Option<bool> {
     }
 }
 
-fn json_str(s: &str, key: &str) -> Option<String> {
-    let v = json_value(s, key)?.strip_prefix('"')?;
+fn JsonStr(s: &str, key: &str) -> Option<String> {
+    let v = LinusWare::net::JsonValue(s, key)?.strip_prefix('"')?;
     let mut out = String::new();
     let mut it = v.chars();
     while let Some(c) = it.next() {
@@ -62,35 +63,35 @@ fn json_str(s: &str, key: &str) -> Option<String> {
 }
 
 // CURL
-pub fn have_curl() -> bool {
+pub fn HaveCurl() -> bool {
     Command::new("curl").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok()
 }
 
-fn curl() -> Command {
+fn Curl() -> Command {
     let mut c = Command::new("curl");
-    c.args(["-fsSL", "--connect-timeout", "10", "-A", concat!("lwlauncher/", env!("CARGO_PKG_VERSION"))]);
+    c.args(["-fsSL", "--proto-redir", "=https", "--connect-timeout", "10", "-A", concat!("lwlauncher/", env!("CARGO_PKG_VERSION"))]);
     c.stdin(Stdio::null());
     c
 }
 
-fn curl_err(out: &std::process::Output) -> String {
+fn CurlErr(out: &std::process::Output) -> String {
     let e = String::from_utf8_lossy(&out.stderr);
     let e = e.trim().trim_start_matches("curl: ");
     if e.is_empty() { format!("download failed ({})", out.status) } else { e.to_string() }
 }
 
-pub fn fetch(url: &str) -> Result<String, String> {
-    let out = curl().args(["--max-time", "20", url]).output().map_err(|e| format!("curl: {e}"))?;
+pub fn Fetch(url: &str) -> Result<String, String> {
+    let out = LinusWare::net::Curl().args(["--max-time", "20", url]).output().map_err(|e| format!("curl: {e}"))?;
     if !out.status.success() {
-        return Err(curl_err(&out));
+        return Err(LinusWare::net::CurlErr(&out));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-pub fn head(url: &str) -> Result<(u64, String), String> {
-    let out = curl().args(["--max-time", "20", "-I", url]).output().map_err(|e| format!("curl: {e}"))?;
+pub fn Head(url: &str) -> Result<(u64, String), String> {
+    let out = LinusWare::net::Curl().args(["--max-time", "20", "-I", url]).output().map_err(|e| format!("curl: {e}"))?;
     if !out.status.success() {
-        return Err(curl_err(&out));
+        return Err(LinusWare::net::CurlErr(&out));
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let mut len = 0;
@@ -109,8 +110,8 @@ pub fn head(url: &str) -> Result<(u64, String), String> {
     Ok((len, if etag.is_empty() { modified } else { etag }))
 }
 
-pub fn download(url: &str, dest: &Path, got: &AtomicU64) -> Result<(), String> {
-    let mut child = curl()
+pub fn Download(url: &str, dest: &Path, got: &AtomicU64) -> Result<(), String> {
+    let mut child = LinusWare::net::Curl()
         .args(["--max-time", "600", "-o"])
         .arg(dest)
         .arg(url)
@@ -134,28 +135,12 @@ pub fn download(url: &str, dest: &Path, got: &AtomicU64) -> Result<(), String> {
     }
     if !out.status.success() {
         let _ = std::fs::remove_file(dest);
-        return Err(curl_err(&out));
+        return Err(LinusWare::net::CurlErr(&out));
     }
     Ok(())
 }
 
-pub fn md5_file(p: &Path) -> std::io::Result<String> {
-    use md5::{Digest, Md5};
-    use std::io::Read;
-    let mut f = std::fs::File::open(p)?;
-    let mut h = Md5::new();
-    let mut buf = vec![0u8; 1 << 16];
-    loop {
-        let n = f.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        h.update(&buf[..n]);
-    }
-    Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
-}
-
-pub fn newer(remote: &str, local: &str) -> bool {
+pub fn Newer(remote: &str, local: &str) -> bool {
     let parse = |s: &str| -> Vec<u64> { s.trim().trim_start_matches('v').split('.').map(|p| p.parse().unwrap_or(0)).collect() };
     let (a, b) = (parse(remote), parse(local));
     for i in 0..a.len().max(b.len()) {

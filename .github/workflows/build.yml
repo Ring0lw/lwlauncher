@@ -38,7 +38,7 @@ jobs:
         run: |
           mkdir -p out
           cp "target/$TARGET/release/lwlauncher" out/lwlauncher
-          md5sum out/lwlauncher | cut -d' ' -f1 > out/lwlauncher.md5
+          sha256sum out/lwlauncher | cut -d' ' -f1 > out/lwlauncher.sha256
           cp install.sh out/install.sh
           echo "glibc floor: $(objdump -T out/lwlauncher | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1)"
           ls -la out
@@ -62,4 +62,4 @@ jobs:
           \`\`\`
           Then run \`lw\`. The launcher downloads LinusWare and updates itself from these releases.
           EOF
-          gh release create "$GITHUB_REF_NAME" out/lwlauncher out/lwlauncher.md5 out/install.sh --title "$GITHUB_REF_NAME" --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" out/lwlauncher out/lwlauncher.sha256 out/install.sh --title "$GITHUB_REF_NAME" --notes-file notes.md

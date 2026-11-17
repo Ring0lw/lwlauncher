@@ -1,10 +1,15 @@
-use crate::net::{self, Status};
-use crate::{EDITION, Paths};
+use crate::LinusWare;
+use crate::LinusWare::net::Status;
+use crate::LinusWare::{EDITION, Paths};
+use minisign_verify::{PublicKey, Signature};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
-pub const ICON_SVG: &str = include_str!("../assets/linusware.svg");
+pub const ICON_SVG: &str = include_str!("../../assets/linusware.svg");
+const PUBKEY: &str = include_str!("../../assets/linusware.pub"); // minisign, key id 433C4F3A1BD878A0
+const LAUNCHER_SH: &str = include_str!("../../scripts/launcher.sh");
+const UPDATE_SH: &str = include_str!("../../scripts/update.sh");
 
 // PROGRESS
 #[derive(Default)]
@@ -21,7 +26,7 @@ pub const PH_INSTALL: u8 = 3;
 pub const PH_LAUNCHER: u8 = 4;
 
 impl Progress {
-    pub fn set(&self, p: u8) {
+    pub fn Set(&self, p: u8) {
         self.phase.store(p, Ordering::Relaxed);
     }
 }
@@ -33,21 +38,21 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    pub fn describe(&self) -> String {
+    pub fn Describe(&self) -> String {
         match self {
             Outcome::UpToDate(v, _) => format!("{EDITION}: already up-to-date (v{v})"),
             Outcome::Updated { from, to, .. } => format!("{EDITION}: {} -> v{to}", from.as_deref().unwrap_or("none")),
-            Outcome::NotReleased => format!("{EDITION}: not available (not yet released)"),
+            Outcome::NotReleased => format!("{EDITION}: not updated yet"),
         }
     }
 }
 
 // SOURCES
-fn status_at(paths: &Paths, what: &str) -> Result<(Status, String), String> {
+fn StatusAt(paths: &Paths, what: &str) -> Result<(Status, String), String> {
     let mut err = String::from("no download source");
     for base in &paths.sources {
-        match net::fetch(&format!("{base}/{what}/status.json")) {
-            Ok(text) => match Status::parse(&text) {
+        match LinusWare::net::Fetch(&format!("{base}/{what}/status.json")) {
+            Ok(text) => match LinusWare::net::Status::Parse(&text) {
                 Some(st) => return Ok((st, base.clone())),
                 None => err = "bad status.json".into(),
             },
@@ -57,62 +62,71 @@ fn status_at(paths: &Paths, what: &str) -> Result<(Status, String), String> {
     Err(err)
 }
 
-pub fn status(paths: &Paths, what: &str) -> Result<Status, String> {
-    status_at(paths, what).map(|(st, _)| st)
+pub fn GetStatus(paths: &Paths, what: &str) -> Result<Status, String> {
+    LinusWare::install::StatusAt(paths, what).map(|(st, _)| st)
 }
 
-fn md5sum(url: &str) -> Result<String, String> {
-    let text = net::fetch(url)?;
-    let hex: String = text.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
-    if hex.len() != 32 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err("bad MD5SUM".into());
+fn Verify(file: &Path, sig: &Signature) -> Result<(), String> {
+    use std::io::Read;
+    let key = PublicKey::decode(PUBKEY).map_err(|e| e.to_string())?;
+    let mut v = key.verify_stream(sig).map_err(|_| String::from("signature is from another key"))?;
+    let mut f = std::fs::File::open(file).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; 1 << 16];
+    loop {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        v.update(&buf[..n]);
     }
-    Ok(hex)
+    v.finalize().map_err(|_| String::from("signature doesnt match the download"))
 }
 
-fn fetch_verified(url: &str, md5_url: &str, dest: &Path, pr: &Progress) -> Result<(), String> {
-    let expected = md5sum(md5_url)?;
-    let total = net::head(url).map(|(n, _)| n).unwrap_or(0);
+fn FetchVerified(url: &str, signed: &str, dest: &Path, pr: &Progress) -> Result<(), String> {
+    let sig = Signature::decode(&LinusWare::net::Fetch(&format!("{url}.minisig"))?).map_err(|_| String::from("bad signature file"))?;
+    if sig.trusted_comment() != signed {
+        return Err(format!("signature isnt for '{signed}'"));
+    }
+    let total = LinusWare::net::Head(url).map(|(n, _)| n).unwrap_or(0);
     pr.total.store(total, Ordering::Relaxed);
     pr.got.store(0, Ordering::Relaxed);
-    pr.set(PH_DOWNLOAD);
-    net::download(url, dest, &pr.got)?;
-    pr.set(PH_VERIFY);
-    let actual = net::md5_file(dest).map_err(|e| e.to_string())?;
-    if actual != expected {
+    pr.Set(PH_DOWNLOAD);
+    LinusWare::net::Download(url, dest, &pr.got)?;
+    pr.Set(PH_VERIFY);
+    let r = LinusWare::install::Verify(dest, &sig);
+    if r.is_err() {
         let _ = std::fs::remove_file(dest);
-        return Err(format!("MD5 mismatch (expected {expected}, got {actual})"));
     }
-    Ok(())
+    r
 }
 
 // EDITION
-pub fn update_edition(paths: &Paths, pr: &Progress, force: bool) -> Result<Outcome, String> {
+pub fn UpdateEdition(paths: &Paths, pr: &Progress, force: bool) -> Result<Outcome, String> {
     let ed = paths.ed.as_str();
-    let (st, base) = status_at(paths, ed)?;
+    let (st, base) = LinusWare::install::StatusAt(paths, ed)?;
     if !st.updated {
         return Ok(Outcome::NotReleased);
     }
-    let dir = paths.edition();
-    let cur = paths.installed_version();
-    if !force && paths.installed() && cur.as_deref() == Some(st.version.as_str()) {
+    let dir = paths.Edition();
+    let cur = paths.InstalledVersion();
+    if !force && paths.Installed() && cur.as_deref() == Some(st.version.as_str()) {
         return Ok(Outcome::UpToDate(st.version, st.log));
     }
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let archive = dir.join(".download.tmp");
     let result = (|| {
-        fetch_verified(&format!("{base}/{ed}/bin/linusware.tar.gz"), &format!("{base}/{ed}/bin/MD5SUM"), &archive, pr)?;
-        pr.set(PH_INSTALL);
-        unpack(&archive, &dir)?;
-        write_atomic(&dir.join("version.txt"), format!("{}\n", st.version).as_bytes()).map_err(|e| e.to_string())
+        LinusWare::install::FetchVerified(&format!("{base}/{ed}/bin/linusware.tar.gz"), &format!("{ed} {}", st.version), &archive, pr)?;
+        pr.Set(PH_INSTALL);
+        LinusWare::install::Unpack(&archive, &dir)?;
+        LinusWare::install::WriteAtomic(&dir.join("version.txt"), format!("{}\n", st.version).as_bytes()).map_err(|e| e.to_string())
     })();
     let _ = std::fs::remove_file(&archive);
-    pr.set(PH_IDLE);
+    pr.Set(PH_IDLE);
     result?;
     Ok(Outcome::Updated { from: cur, to: st.version, log: st.log })
 }
 
-fn unpack(archive: &Path, dir: &Path) -> Result<(), String> {
+fn Unpack(archive: &Path, dir: &Path) -> Result<(), String> {
     let staging = dir.join(".staging");
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
@@ -147,35 +161,35 @@ fn unpack(archive: &Path, dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn write_atomic(p: &Path, data: &[u8]) -> std::io::Result<()> {
+fn WriteAtomic(p: &Path, data: &[u8]) -> std::io::Result<()> {
     let tmp = p.with_extension("tmp");
     std::fs::write(&tmp, data)?;
     std::fs::rename(&tmp, p)
 }
 
 // SELF UPDATE
-pub fn self_update(paths: &Paths, pr: &Progress) -> Result<Option<String>, String> {
-    if !paths.exe_installed() {
+pub fn SelfUpdate(paths: &Paths, pr: &Progress) -> Result<Option<String>, String> {
+    if !paths.ExeInstalled() {
         return Ok(None);
     }
-    let Ok((st, base)) = status_at(paths, "launcher") else { return Ok(None) };
-    if !st.updated || !net::newer(&st.version, crate::VERSION) {
+    let Ok((st, base)) = LinusWare::install::StatusAt(paths, "launcher") else { return Ok(None) };
+    if !st.updated || !LinusWare::net::Newer(&st.version, crate::LinusWare::VERSION) {
         return Ok(None);
     }
     let tmp = paths.install.join(".lwlauncher.new");
-    let r = fetch_verified(&format!("{base}/launcher/bin/lwlauncher"), &format!("{base}/launcher/bin/MD5SUM"), &tmp, pr).and_then(|_| {
+    let r = LinusWare::install::FetchVerified(&format!("{base}/launcher/bin/lwlauncher"), &format!("launcher {}", st.version), &tmp, pr).and_then(|_| {
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
-        reports(&tmp, &st.version)?;
+        LinusWare::install::Reports(&tmp, &st.version)?;
         std::fs::rename(&tmp, &paths.exe).map_err(|e| e.to_string())
     });
-    pr.set(PH_IDLE);
+    pr.Set(PH_IDLE);
     if r.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
     r.map(|_| Some(st.version))
 }
 
-fn reports(exe: &Path, want: &str) -> Result<(), String> {
+fn Reports(exe: &Path, want: &str) -> Result<(), String> {
     let out = std::process::Command::new(exe)
         .arg("--version")
         .env("LINUSWARE_DIR", exe.with_extension("check"))
@@ -187,61 +201,44 @@ fn reports(exe: &Path, want: &str) -> Result<(), String> {
     if got == want.trim_start_matches('v') { Ok(()) } else { Err(format!("new launcher reports v{got}, expected v{want}")) }
 }
 
-pub fn restart(paths: &Paths) -> ! {
+pub fn Restart(paths: &Paths) -> ! {
     use std::os::unix::process::CommandExt;
     let err = std::process::Command::new(&paths.exe).args(std::env::args_os().skip(1)).exec();
-    eprintln!("lwlauncher: restart failed: {err}");
+    eprintln!("{}", LinusWare::Log::Line(&format!("Failed to restart: {err}")));
     std::process::exit(1);
 }
 
 // LEGACY SCRIPTS
-pub fn refresh_scripts(paths: &Paths, mut note: impl FnMut(String)) {
-    let cache = paths.install.join(".scripts");
-    for script in ["launcher.sh", "update.sh"] {
+pub fn RefreshScripts(paths: &Paths, mut note: impl FnMut(String)) {
+    let _ = std::fs::remove_file(paths.install.join(".scripts"));
+    for (script, text) in [("launcher.sh", LAUNCHER_SH), ("update.sh", UPDATE_SH)] {
         let local = paths.install.join(script);
-        if !local.exists() {
-            continue;
-        }
-        let Some((url, id)) = paths.sources.iter().find_map(|b| {
-            let url = format!("{b}/{script}");
-            net::head(&url).ok().map(|(_, id)| (url, id))
-        }) else {
-            continue;
-        };
-        if id.is_empty() {
-            continue;
-        }
-        let text = std::fs::read_to_string(&cache).unwrap_or_default();
-        let prefix = format!("{script} ");
-        if text.lines().any(|l| l.strip_prefix(&prefix) == Some(id.as_str())) {
+        if !local.exists() || std::fs::read_to_string(&local).ok().as_deref() == Some(text) {
             continue;
         }
         let tmp = paths.install.join(format!(".{script}.tmp"));
-        if net::download(&url, &tmp, &AtomicU64::new(0)).is_err() {
+        if std::fs::write(&tmp, text).is_err() {
             continue;
         }
         let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
         if std::fs::rename(&tmp, &local).is_ok() {
-            let mut lines: Vec<String> = text.lines().filter(|l| !l.starts_with(&prefix)).map(String::from).collect();
-            lines.push(format!("{script} {id}"));
-            let _ = std::fs::write(&cache, lines.join("\n") + "\n");
             note(format!("{script}: updated"));
         }
     }
 }
 
 // DESKTOP ENTRY
-pub fn write_desktop_entry(paths: &Paths) -> std::io::Result<()> {
+pub fn WriteDesktopEntry(paths: &Paths) -> std::io::Result<()> {
     let entry = format!(
         "[Desktop Entry]\nType=Application\nName=LinusWare\nComment=LinusWare launcher\nExec=\"{}\"\nIcon=linusware\nTerminal=false\nCategories=Game;\nStartupWMClass=linusware\nX-LinusWare=lwlauncher\n",
         paths.exe.display()
     );
-    let desktop = paths.desktop_file();
+    let desktop = paths.DesktopFile();
     if std::fs::read_to_string(&desktop).ok().as_deref() != Some(entry.as_str()) {
         std::fs::create_dir_all(desktop.parent().unwrap())?;
         std::fs::write(&desktop, entry)?;
     }
-    let icon = paths.icon_file();
+    let icon = paths.IconFile();
     if !icon.exists() {
         std::fs::create_dir_all(icon.parent().unwrap())?;
         std::fs::write(&icon, ICON_SVG)?;

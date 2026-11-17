@@ -1,5 +1,6 @@
-use crate::Paths;
-use crate::askpass::Bridge;
+use crate::LinusWare;
+use crate::LinusWare::Paths;
+use crate::LinusWare::askpass::Bridge;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::os::unix::process::CommandExt;
@@ -18,7 +19,7 @@ unsafe extern "C" {
 }
 
 // PROC
-fn procs() -> Vec<(u32, u32, String)> {
+fn Procs() -> Vec<(u32, u32, String)> {
     let mut out = Vec::new();
     let Ok(rd) = std::fs::read_dir("/proc") else { return out };
     for e in rd.flatten() {
@@ -32,16 +33,16 @@ fn procs() -> Vec<(u32, u32, String)> {
     out
 }
 
-pub fn running(paths: &Paths) -> bool {
+pub fn IsRunning(paths: &Paths) -> bool {
     let dir = paths.install.canonicalize().unwrap_or_else(|_| paths.install.clone());
-    procs().iter().filter(|(_, _, c)| c == "linusware").any(|(pid, _, _)| match std::fs::read_link(format!("/proc/{pid}/exe")) {
+    LinusWare::launch::Procs().iter().filter(|(_, _, c)| c == "linusware").any(|(pid, _, _)| match std::fs::read_link(format!("/proc/{pid}/exe")) {
         Ok(exe) => exe.starts_with(&dir),
         Err(_) => true,
     })
 }
 
-fn descendant_named(root: u32, name: &str) -> bool {
-    let all = procs();
+fn DescendantNamed(root: u32, name: &str) -> bool {
+    let all = LinusWare::launch::Procs();
     let parent: HashMap<u32, u32> = all.iter().map(|(p, pp, _)| (*p, *pp)).collect();
     all.iter().filter(|(_, _, c)| c == name).any(|(pid, _, _)| {
         if *pid == root {
@@ -59,11 +60,11 @@ fn descendant_named(root: u32, name: &str) -> bool {
     })
 }
 
-pub fn log_path(paths: &Paths) -> PathBuf {
-    paths.edition().join("last.log")
+pub fn LogPath(paths: &Paths) -> PathBuf {
+    paths.Edition().join("last.log")
 }
 
-pub fn tail(p: &Path) -> String {
+pub fn Tail(p: &Path) -> String {
     let s = std::fs::read_to_string(p).unwrap_or_default();
     s.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").chars().take(160).collect()
 }
@@ -78,20 +79,20 @@ const KEEP_ENV: [&str; 14] = [
     "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "DBUS_SESSION_BUS_ADDRESS",
 ];
 
-fn which(bin: &str) -> Option<PathBuf> {
+fn Which(bin: &str) -> Option<PathBuf> {
     std::env::var_os("PATH")
         .into_iter()
         .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
         .map(|d| d.join(bin))
-        .find(|p| crate::is_exec(p))
+        .find(|p| LinusWare::IsExec(p))
 }
 
-fn pkexec_bin() -> Option<PathBuf> {
+fn PkexecBin() -> Option<PathBuf> {
     #[cfg(debug_assertions)]
     if let Some(p) = std::env::var_os("LW_PKEXEC") {
         return (!p.is_empty()).then(|| PathBuf::from(p));
     }
-    which("pkexec")
+    LinusWare::launch::Which("pkexec")
 }
 
 #[derive(Clone)]
@@ -102,19 +103,19 @@ struct Ask {
 }
 
 impl Ask {
-    fn new(paths: &Paths, bridge: &Bridge) -> Ask {
+    fn New(paths: &Paths, bridge: &Bridge) -> Ask {
         Ask { exe: paths.exe.clone(), sock: bridge.path.clone(), token: bridge.token.clone() }
     }
 }
 
 // ELEVATE
-fn elevate(pkexec: Option<&Path>, ask: &Ask, dir: &Path, cmd: &[OsString], log: &Path) -> std::io::Result<Child> {
+fn Elevate(pkexec: Option<&Path>, ask: &Ask, dir: &Path, cmd: &[OsString], log: &Path) -> std::io::Result<Child> {
     let out = std::fs::File::create(log)?;
     let err = out.try_clone()?;
     let mut c = match pkexec {
         Some(pk) => {
             let mut c = Command::new(pk);
-            c.arg("--disable-internal-agent").arg(which("env").unwrap_or_else(|| PathBuf::from("/usr/bin/env")));
+            c.arg("--disable-internal-agent").arg(LinusWare::launch::Which("env").unwrap_or_else(|| PathBuf::from("/usr/bin/env")));
             let vars = KEEP_ENV.iter().map(|k| (OsString::from(k), std::env::var_os(k))).chain(
                 std::env::vars_os().filter(|(k, _)| k.to_str().is_some_and(|k| k.starts_with("LW_") && !k.starts_with("LW_ASKPASS"))).map(|(k, v)| (k, Some(v))),
             );
@@ -157,7 +158,7 @@ fn elevate(pkexec: Option<&Path>, ask: &Ask, dir: &Path, cmd: &[OsString], log: 
     c.spawn()
 }
 
-fn no_agent(code: i32, tail: &str) -> bool {
+fn NoAgent(code: i32, tail: &str) -> bool {
     let t = tail.to_ascii_lowercase();
     code == 127 && (t.contains("authentication agent") || t.contains("no session for cookie"))
 }
@@ -165,13 +166,13 @@ fn no_agent(code: i32, tail: &str) -> bool {
 pub const CANCELLED: i32 = 126;
 
 // EXTERNAL
-pub fn start(paths: &Paths, bridge: &Bridge, mut send: impl FnMut(Event) + Send + 'static) -> std::io::Result<()> {
-    let log = log_path(paths);
-    let dir = paths.edition();
+pub fn Start(paths: &Paths, bridge: &Bridge, mut send: impl FnMut(Event) + Send + 'static) -> std::io::Result<()> {
+    let log = LinusWare::launch::LogPath(paths);
+    let dir = paths.Edition();
     let cmd = [dir.join("run.sh").into_os_string()];
-    let ask = Ask::new(paths, bridge);
-    let mut pk = pkexec_bin();
-    let mut child = elevate(pk.as_deref(), &ask, &dir, &cmd, &log)?;
+    let ask = LinusWare::launch::Ask::New(paths, bridge);
+    let mut pk = LinusWare::launch::PkexecBin();
+    let mut child = LinusWare::launch::Elevate(pk.as_deref(), &ask, &dir, &cmd, &log)?;
     let paths = paths.clone();
     std::thread::spawn(move || {
         let mut started = Instant::now();
@@ -179,10 +180,10 @@ pub fn start(paths: &Paths, bridge: &Bridge, mut send: impl FnMut(Event) + Send 
         loop {
             if let Ok(Some(st)) = child.try_wait() {
                 let code = st.code().unwrap_or(-1);
-                let t = tail(&log);
-                if pk.is_some() && seen.is_none() && no_agent(code, &t) {
+                let t = LinusWare::launch::Tail(&log);
+                if pk.is_some() && seen.is_none() && LinusWare::launch::NoAgent(code, &t) {
                     pk = None;
-                    match elevate(None, &ask, &dir, &cmd, &log) {
+                    match LinusWare::launch::Elevate(None, &ask, &dir, &cmd, &log) {
                         Ok(c) => {
                             child = c;
                             started = Instant::now();
@@ -198,8 +199,8 @@ pub fn start(paths: &Paths, bridge: &Bridge, mut send: impl FnMut(Event) + Send 
                     send(Event::Exited { code, tail: String::new() });
                     return;
                 }
-                if pk.is_none() && seen.is_none() && code != 0 && unsupported(&t) && started.elapsed() < Duration::from_secs(3) {
-                    match in_terminal(&paths) {
+                if pk.is_none() && seen.is_none() && code != 0 && LinusWare::launch::Unsupported(&t) && started.elapsed() < Duration::from_secs(3) {
+                    match LinusWare::launch::InTerminal(&paths) {
                         Ok(()) => send(Event::Stable),
                         Err(_) => send(Event::Exited { code, tail: t }),
                     }
@@ -209,7 +210,7 @@ pub fn start(paths: &Paths, bridge: &Bridge, mut send: impl FnMut(Event) + Send 
                 return;
             }
             match seen {
-                None if descendant_named(child.id(), "linusware") => {
+                None if LinusWare::launch::DescendantNamed(child.id(), "linusware") => {
                     seen = Some(Instant::now());
                     send(Event::Running);
                 }
@@ -225,13 +226,13 @@ pub fn start(paths: &Paths, bridge: &Bridge, mut send: impl FnMut(Event) + Send 
     Ok(())
 }
 
-fn unsupported(tail: &str) -> bool {
+fn Unsupported(tail: &str) -> bool {
     let t = tail.to_ascii_lowercase();
     ["unexpected argument", "invalid option", "unrecognized option", "askpass"].iter().any(|k| t.contains(k)) && !t.contains("incorrect")
 }
 
-fn in_terminal(paths: &Paths) -> std::io::Result<()> {
-    let dir = paths.edition();
+fn InTerminal(paths: &Paths) -> std::io::Result<()> {
+    let dir = paths.Edition();
     let cmd = format!("cd '{}' && ./run.sh; echo; read -rp 'Press Enter to close' _", dir.display().to_string().replace('\'', "'\\''"));
     let mut terms: Vec<String> = Vec::new();
     if let Ok(t) = std::env::var("TERMINAL") {
@@ -265,25 +266,25 @@ fn in_terminal(paths: &Paths) -> std::io::Result<()> {
 }
 
 // ELEVATED DELETE
-pub fn sudo_rm(paths: &Paths, bridge: &Bridge, targets: &[PathBuf], mut done: impl FnMut(bool, String) + Send + 'static) -> std::io::Result<()> {
+pub fn SudoRm(paths: &Paths, bridge: &Bridge, targets: &[PathBuf], mut done: impl FnMut(bool, String) + Send + 'static) -> std::io::Result<()> {
     let log = std::env::temp_dir().join(format!("lwlauncher-rm-{}.log", std::process::id()));
-    let mut cmd: Vec<OsString> = vec![which("rm").unwrap_or_else(|| PathBuf::from("/usr/bin/rm")).into_os_string(), "-rf".into(), "--".into()];
+    let mut cmd: Vec<OsString> = vec![LinusWare::launch::Which("rm").unwrap_or_else(|| PathBuf::from("/usr/bin/rm")).into_os_string(), "-rf".into(), "--".into()];
     cmd.extend(targets.iter().map(|p| p.clone().into_os_string()));
-    let ask = Ask::new(paths, bridge);
-    let pk = pkexec_bin();
-    let mut child = elevate(pk.as_deref(), &ask, Path::new("/"), &cmd, &log)?;
+    let ask = LinusWare::launch::Ask::New(paths, bridge);
+    let pk = LinusWare::launch::PkexecBin();
+    let mut child = LinusWare::launch::Elevate(pk.as_deref(), &ask, Path::new("/"), &cmd, &log)?;
     std::thread::spawn(move || {
         let mut st = child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
-        if pk.is_some() && no_agent(st, &tail(&log)) {
-            st = elevate(None, &ask, Path::new("/"), &cmd, &log).and_then(|mut c| c.wait()).map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+        if pk.is_some() && LinusWare::launch::NoAgent(st, &LinusWare::launch::Tail(&log)) {
+            st = LinusWare::launch::Elevate(None, &ask, Path::new("/"), &cmd, &log).and_then(|mut c| c.wait()).map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
         }
-        let t = if st == CANCELLED { String::new() } else { tail(&log) };
+        let t = if st == CANCELLED { String::new() } else { LinusWare::launch::Tail(&log) };
         let _ = std::fs::remove_file(&log);
         done(st == 0, t);
     });
     Ok(())
 }
 
-pub fn open(target: &str) {
+pub fn Open(target: &str) {
     let _ = Command::new("xdg-open").arg(target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
 }
